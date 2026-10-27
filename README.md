@@ -38,6 +38,8 @@ FAIL  shown as text: $1/r$
 
 Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't run.
 
+[FIXES.md](FIXES.md) lists what renders and what doesn't, with examples.
+
 `--flag off` simulates the app's inline-math feature flag being off; then only `$$` blocks render.
 The default is `on`.
 

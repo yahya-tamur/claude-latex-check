@@ -20,6 +20,11 @@ const expected = {
   '12-no-math.md': 'ok: no math',
   // \(2x\), \(1/r\), \(x\) and a \[...\] block stay text; \(\frac{1}\) is a KaTeX error; ${2x}$ fails
   '13-backslash-delims.md': '7 failed, 4 rendered',
+  // two >60-char spans and the 61-char boundary fail; split forms, $$ form and 60 chars render
+  '14-long-span.md': '3 failed, 6 rendered',
+  '15-bracket-span.md': '1 failed, 2 rendered',        // $[L:k]$ fails; $n = [L:k]$ and $$[L:k] = 2$$ render
+  '16-trailing-operator.md': '1 failed, 1 rendered',   // $M \otimes_A -$ fails
+  '17-quote-adjacent.md': '1 failed, 1 rendered',      // $p$" fails
 };
 
 let bad = 0;

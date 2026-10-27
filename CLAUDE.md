@@ -10,11 +10,8 @@
 3. Exit 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. On 2, send the
    reply anyway, tell the user the math wasn't checked, and see "When it breaks" below.
 
-Writing math that passes the first time:
-- Inline `$...$`. A span that starts with a digit needs a TeX symbol or operator:
-  `$\frac{1}{r}$`, `$r^{-1}$`, `$2\,x$`, `$2x+1$` render; `$1/r$`, `$2x$` don't.
-- Display `$$...$$` only as its own paragraph, never mid-sentence. Keep each `$...$` on one line.
-- Avoid `\(...\)` and `\[...\]`: simple ones like `\(x\)` and `\(2x\)` show as plain `(x)`, `(2x)`.
+Writing math that passes the first time: before writing math, read `<repo>/FIXES.md`, the rules
+for what renders, and `<repo>/fixes.local.md` if it exists. Use those forms from the start.
 
 Learn from every failure. Each fail-and-retry round costs a re-run and a rewrite, so don't hit the
 same failure twice:
@@ -22,9 +19,9 @@ same failure twice:
   git ignores it): the form that failed, the form that rendered, and the rule if there is one. For
   example: `$1/r$` failed, `$\frac{1}{r}$` renders; digit-led spans need a TeX symbol. Use this
   file, not Claude's own memory, which is per project folder and so isn't shared between sessions.
-- Before writing math, read that file along with the list above. Use the fixed forms from the start.
 - Generalize when you can. Save "digit-led spans need a TeX symbol", not just the one formula.
-- Don't add fixes to this CLAUDE.md or `tests/`, and don't offer to. The user curates those.
+- Don't add fixes to `FIXES.md`, this CLAUDE.md or `tests/`, and don't offer to. The user curates
+  those.
 
 Keeping token use low:
 - Run it once per finished draft, not per formula. Output is already minimal: only failures plus a
