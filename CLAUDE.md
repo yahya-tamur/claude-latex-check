@@ -16,6 +16,17 @@ Writing math that passes the first time:
 - Display `$$...$$` only as its own paragraph, never mid-sentence. Keep each `$...$` on one line.
 - Avoid `\(...\)` and `\[...\]`: simple ones like `\(x\)` and `\(2x\)` show as plain `(x)`, `(2x)`.
 
+Learn from every failure. Each fail-and-retry round costs a re-run and a rewrite, so don't hit the
+same failure twice:
+- When a `FAIL` gets fixed, save the pair right away to a persistent memory note for this machine
+  (e.g. one named "latex fixes"): the form that failed, the form that rendered, and the rule if
+  there is one. For example: `$1/r$` failed, `$\frac{1}{r}$` renders; digit-led spans need a TeX
+  symbol.
+- Before writing math, read that note along with the list above. Use the fixed forms from the start.
+- Generalize when you can. Save "digit-led spans need a TeX symbol", not just the one formula.
+- If a fix seems useful to everyone, offer to add it to the list above and to a `tests/*.md` case.
+  Don't edit the repo without asking.
+
 Keeping token use low:
 - Run it once per finished draft, not per formula. Output is already minimal: only failures plus a
   summary line. A reply without math costs 0.2 s and prints `ok: no math`.
