@@ -1,15 +1,15 @@
 # claude-latex-check
 
-> **Claude:** read [CLAUDE.md](CLAUDE.md) instead of this file. It covers usage, writing math that
-> passes, keeping token use low, and fixing the checker after app updates.
+> **Claude:** read [CLAUDE.md](CLAUDE.md) instead of this file. It covers usage, where the render rules
+> are, recording new fixes, keeping token use low, and fixing the checker after app updates.
 
 Checks that LaTeX in a markdown reply renders as math in the Claude desktop app's Code tab. It runs
 the installed app's own renderer (its markdown code, react-markdown and KaTeX) in a simulated
 browser (jsdom), then reports every formula that would show as plain text or as a KaTeX error.
 
-The app decides heuristically whether a span is math, so valid TeX can still show as plain text
-(`$1/r$`, `$2x$`, `$$x$$` mid-sentence, `\(x\)`). Running the app's own code catches exactly those
-cases.
+The app decides heuristically whether a span is math, so valid TeX can still show as plain text:
+`$1/r$`, `$[L:k]$`, `$M \otimes_A -$`, any inline span over 60 characters, `$$x$$` mid-sentence,
+`\(x\)`. Running the app's own code catches exactly those cases.
 
 ## Setup
 
@@ -20,8 +20,9 @@ npm install
 npm test
 ```
 
-`npm test` runs `tests/*.md` and compares each result with what's expected. If anything differs
-after an app update, the app's math handling or its internals changed.
+`npm test` runs `tests/*.md` (17 cases, ~1 minute) and compares each result with what's expected.
+There's a case for every rule in FIXES.md. If anything differs after an app update, the app's math
+handling or its internals changed.
 
 ## Usage
 
@@ -36,12 +37,26 @@ FAIL  shown as text: $1/r$
 1 failed, 14 rendered
 ```
 
-Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't run.
-
-[FIXES.md](FIXES.md) lists what renders and what doesn't, with examples.
+Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. A check takes
+about 3 s, or 0.2 s for text with no math.
 
 `--flag off` simulates the app's inline-math feature flag being off; then only `$$` blocks render.
 The default is `on`.
+
+## Render rules and fixes
+
+Fixes live in two files:
+
+- **[FIXES.md](FIXES.md)** (committed): the rules for what renders and what doesn't, each with
+  failing and working examples and a test case. Sessions read it before writing math, so most
+  replies pass on the first check.
+- **`fixes.local.md`** (git-ignored, one per clone): when a session fixes a new failure, it appends
+  the failing form, the working form and the rule here, then reuses them. All sessions on a machine
+  share it, which Claude's own memory (kept per project folder) wouldn't allow.
+
+Sessions don't edit FIXES.md or `tests/`, and don't offer to. To curate: every so often, move
+entries from each machine's `fixes.local.md` into FIXES.md, check them with `node check.mjs`, add a
+`tests/*.md` case with its expected summary in `test.mjs`, and run `npm test`.
 
 ## Platforms
 
