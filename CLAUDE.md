@@ -24,11 +24,17 @@ Keeping token use low:
   Ignore it.
 - Save "check LaTeX with <repo>/check.mjs" to memory so later sessions skip setup.
 
-## When it breaks (exit 2 after an app update)
+## When it breaks
 
-The checker runs the installed app's own code, so app updates can break it. The error message says
-which step failed. The app's file names and minified identifiers change every build, so everything
-is found by content. What it relies on:
+Two signs:
+- **Exit 2.** The error message names the step that failed.
+- **The user reports that math didn't render as intended**, even though the checker passed it, or
+  that it flagged math that does render. Treat this as a bug in the checker, not the user's eyes. Put
+  the exact text in a new `tests/*.md` file and add its expected result as the user describes it.
+  Then work out why the checker disagrees.
+
+The checker runs the installed app's own code, so app updates can break it. The app's file names and
+minified identifiers change every build, so everything is found by content. What it relies on:
 
 | What | Found by | Used for |
 |---|---|---|
@@ -86,4 +92,4 @@ If it can't be patched, rewrite it. Keep the same contract so callers don't chan
 - Only the Linux install has been tested. The macOS and Windows paths are educated guesses;
   `CLAUDE_DESKTOP_RESOURCES` overrides them.
 - Known costs: ~3 s per check (it scans the bundle for markers and renders the canary each run).
-  A ~150 MB patched copy is cached per app version.
+  The once-per-version copy (~150 MB) and wiring check add no noticeable time.
