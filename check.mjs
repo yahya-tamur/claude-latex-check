@@ -119,31 +119,66 @@ if (!existsSync(join(dir, '.ok'))) {
 await import('./env.mjs');
 const quiet = console.log;
 console.log = console.warn = console.info = console.debug = () => {};
-const load = async f => Object.values(await import(pathToFileURL(join(dir, f)).href)).filter(v => typeof v === 'function');
+// [exportName, fn] pairs of a bundle file.
+const load = async f => Object.entries(await import(pathToFileURL(join(dir, f)).href)).filter(([, v]) => typeof v === 'function');
 const src = f => Function.prototype.toString.call(f);
-const pick = (fns, test, what) => fns.find(f => { try { return test(f); } catch { return false; } }) ?? die(`${what} not found`);
+const passes = (test, f) => { try { return test(f); } catch { return false; } };
+// A unique pattern match can still be the wrong function after an update, so React pieces are
+// checked by behavior, the rest must match exactly once and are then proven by the canary below.
+const pickBy = (entries, test, what) => entries.find(([, f]) => passes(test, f)) ?? die(`${what} not found`);
+const pickOne = (entries, test, what) => {
+  const hits = entries.filter(([, f]) => passes(test, f));
+  if (new Set(hits.map(([, f]) => f)).size !== 1) die(`expected one ${what}, found ${hits.length}`);
+  return hits[0];
+};
 
 const reactFns = await load(files.react);
-const createRoot = pick(reactFns, f => src(f).includes('(299)'), 'createRoot');
-const jsx = pick(reactFns.filter(f => src(f).length < 800 && f.length >= 2),
-  f => f(function T() {}, {})?.$$typeof === Symbol.for('react.transitional.element'), 'jsx');
-const useTranscriptMarkdown = pick(await load(files.renderer),
+const [, createRoot] = pickBy(reactFns, f => f.length === 2 && src(f).includes('(299)') &&
+  typeof f(document.createElement('div'))?.render === 'function', 'createRoot');
+const [, jsx] = pickBy(reactFns.filter(([, f]) => src(f).length < 800 && f.length >= 2), f => {
+  const T = () => null, e = f(T, { a: 1 });
+  return e?.$$typeof === Symbol.for('react.transitional.element') && e.type === T && e.props.a === 1;
+}, 'jsx');
+const [hookName, useTranscriptMarkdown] = pickOne(await load(files.renderer),
   f => src(f).includes('guardedInline:') && src(f).includes('rehypePlugins:'), 'transcript markdown hook');
-const ReactMarkdown = pick(await load(files.markdown),
+const [, ReactMarkdown] = pickOne(await load(files.markdown),
   f => /\.runSync\([\w$]+\.parse\(/.test(src(f)) && f.length === 1, 'react-markdown');
 console.log = quiet;
 
-// Same call the transcript's text component makes: hook(text, "chat", true).
-function Transcript() {
-  const { remarkPlugins, rehypePlugins } = useTranscriptMarkdown(text, 'chat', true, false);
-  return jsx(ReactMarkdown, { remarkPlugins, rehypePlugins, children: text });
+// Wiring check, once per app version: some component must still call this hook the way the Code
+// tab transcript does, hook(text, "chat", true, ...). Otherwise the app has moved to another renderer.
+if (!existsSync(join(dir, '.wired'))) {
+  const importRe = new RegExp(`import\\{[^}]*\\b${escapeRe(hookName)} as ([\\w$]+)[^}]*\\}from"\\./${escapeRe(files.renderer)}"`);
+  const wired = jsFiles.some(f => {
+    const s = read(SRC, f), alias = s.match(importRe)?.[1];
+    return alias && new RegExp(`(?<![\\w$.])${escapeRe(alias)}\\([\\w$]+,"chat",!0[,)]`).test(s);
+  });
+  if (!wired) die('no app component calls the markdown hook as hook(text, "chat", true) any more');
+  writeFileSync(join(dir, '.wired'), '');
 }
-const el = document.createElement('div');
-document.body.append(el);
-createRoot(el, { onUncaughtError: e => die(e?.stack ?? e) }).render(jsx(Transcript, {}));
-// Math plugins load lazily; with delimiters present, wait until math shows up or time runs out.
-for (let t = 0; hasDelimiters && t < 40 && !el.querySelector('.katex, .katex-error'); t++) await new Promise(r => setTimeout(r, 100));
-await new Promise(r => setTimeout(r, 300));
+
+// Render markdown the way the transcript's text component does: hook(text, "chat", true).
+async function render(md, waitForMath) {
+  function Transcript() {
+    const { remarkPlugins, rehypePlugins } = useTranscriptMarkdown(md, 'chat', true, false);
+    return jsx(ReactMarkdown, { remarkPlugins, rehypePlugins, children: md });
+  }
+  const el = document.createElement('div');
+  document.body.append(el);
+  createRoot(el, { onUncaughtError: e => die(e?.stack ?? e) }).render(jsx(Transcript, {}));
+  // Math plugins load lazily on first use; wait until math shows up or time runs out.
+  for (let t = 0; waitForMath && t < 40 && !el.querySelector('.katex, .katex-error'); t++) await new Promise(r => setTimeout(r, 100));
+  await new Promise(r => setTimeout(r, 300));
+  return el;
+}
+
+// Canary: math that must render if the pipeline is assembled right (inline only with the flag on).
+// Also loads the math plugins, so the real render below needs no waiting.
+const canary = await render('Canary $a^2$ inline.\n\n$$b^2$$\n', true);
+const canaryMath = [...canary.querySelectorAll('.katex annotation')].map(e => e.textContent.trim()).join(' ');
+if (canaryMath !== (flag === 'on' ? 'a^2 b^2' : 'b^2')) die(`canary rendered [${canaryMath}]; the pipeline no longer works`);
+
+const el = await render(text, false);
 if (!el.textContent.trim() && text.trim()) die('renderer produced no output');
 
 const rendered = el.querySelectorAll('.katex').length;

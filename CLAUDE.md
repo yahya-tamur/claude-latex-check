@@ -39,6 +39,18 @@ is found by content. What it relies on:
 | React | contains `e.createRoot=function`; `createRoot` has `(299)`; `jsx` is found by test-calling | rendering |
 | react-markdown | `.runSync(<x>.parse(` | rendering |
 
+A unique match can still be the wrong thing, so a match alone isn't trusted:
+- React's `createRoot` and `jsx` are checked by calling them.
+- The hook and react-markdown must each match exactly once.
+- Once per app version, a wiring check confirms some app component still calls the hook as
+  `hook(text, "chat", true, …)`.
+- Every run first renders a canary (`$a^2$` inline plus a `$$b^2$$` paragraph) and exits 2 unless
+  exactly the expected math renders.
+
+Simulated wrong-but-unique matches at each step all exit 2. What these checks can't catch: the app
+keeping this pipeline but drawing the Code tab with a different one. Only `npm test` against what
+the user sees in the real app catches that.
+
 Fixing, cheaply:
 - Bundle: `<resources>/ion-dist/assets/v1/` (Linux `/usr/lib/claude-desktop/resources`). It has ~3,800
   minified `.js` files, with single lines up to ~500 KB. Never print whole files or lines: use
@@ -73,5 +85,5 @@ If it can't be patched, rewrite it. Keep the same contract so callers don't chan
   `(body)` occurrences against the source instead.
 - Only the Linux install has been tested. The macOS and Windows paths are educated guesses;
   `CLAUDE_DESKTOP_RESOURCES` overrides them.
-- Known costs: ~2.5 s per check (it scans the bundle for markers each run). Up to 4 s more when the
-  text has `$` but nothing renders. A ~150 MB patched copy is cached per app version.
+- Known costs: ~3 s per check (it scans the bundle for markers and renders the canary each run).
+  A ~150 MB patched copy is cached per app version.

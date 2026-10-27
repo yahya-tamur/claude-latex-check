@@ -70,3 +70,11 @@ copy:
 - replaces the browser-only chunk preloader with a plain `import`
 
 Then it renders the reply the way the Code tab's transcript does and inspects the result.
+
+So that a wrong match can't produce wrong results:
+- React's functions are verified by calling them.
+- The hook and react-markdown must each match exactly once.
+- A wiring check confirms the app still calls the hook in transcript mode.
+- Every run starts with a canary render of known math.
+
+Any of these failing exits 2.
