@@ -16,8 +16,9 @@ repo has three parts:
   react-markdown and KaTeX) in a simulated browser (jsdom). It reports every formula that would
   show as plain text or as a KaTeX error.
 - **A learning loop:** when the check fails and Claude finds a form that renders, it records both
-  in `fixes.local.md` and uses the working form from then on. You move entries from there into
-  FIXES.md over time.
+  in `fixes.local.md` and uses the working form from then on. That file is git-ignored, one per
+  clone, and shared by every session on the machine. You move entries from it into FIXES.md over
+  time (see [Curating fixes](#curating-fixes)).
 
 ## Setup
 
@@ -51,20 +52,15 @@ about 3 s, or 0.2 s for text with no math.
 `--flag off` simulates the app's inline-math feature flag being off; then only `$$` blocks render.
 The default is `on`.
 
-## Render rules and fixes
+## Curating fixes
 
-Fixes live in two files:
+Claude never edits FIXES.md or `tests/`, so they change only when you curate them. Every so
+often, for each machine:
 
-- **[FIXES.md](FIXES.md)** (committed): the rules for what renders and what doesn't, each with
-  failing and working examples and a test case. Sessions read it before writing math, so most
-  replies pass on the first check.
-- **`fixes.local.md`** (git-ignored, one per clone): when a session fixes a new failure, it appends
-  the failing form, the working form and the rule here, then reuses them. All sessions on a machine
-  share it, which Claude's own memory (kept per project folder) wouldn't allow.
-
-Sessions don't edit FIXES.md or `tests/`, and don't offer to. To curate: every so often, move
-entries from each machine's `fixes.local.md` into FIXES.md, check them with `node check.mjs`, add a
-`tests/*.md` case with its expected summary in `test.mjs`, and run `npm test`.
+1. Move entries from that clone's `fixes.local.md` into FIXES.md.
+2. Check the examples with `node check.mjs`.
+3. Add a `tests/*.md` case, with its expected summary in `test.mjs`.
+4. Run `npm test`.
 
 ## Platforms
 

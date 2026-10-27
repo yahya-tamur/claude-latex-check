@@ -1,17 +1,18 @@
-# For Claude: using and maintaining this checker
+# For Claude: writing math that renders in the Claude desktop app
 
-## Using it (read only this part unless the checker exits 2)
+## Using it
 
-1. Clone once to a stable place and reuse it in later sessions (e.g. `~/tools/claude-latex-check`), then
-   `npm install` there. Node 18+ and the Claude desktop app must be on the same machine. Optionally
-   `npm test` once (~45 s, prints one line).
-2. For every reply containing LaTeX: write the reply's markdown, exactly as it will be sent, to a temp
-   file and run `node <repo>/check.mjs <file>`. Fix each `FAIL` line, re-run, then send.
-3. Exit 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. On 2, send the
+Read only this part unless the checker exits 2 or the user reports a rendering problem.
+
+1. Clone once to a stable place and reuse it in later sessions (e.g. `~/tools/claude-latex-check`),
+   then `npm install` there. Node 18+ and the Claude desktop app must be on the same machine.
+   Optionally run `npm test` once (~1 minute, prints one line).
+2. Before writing any math, read `<repo>/FIXES.md` (the rules for what renders) and
+   `<repo>/fixes.local.md` if it exists. Use those forms from the start.
+3. For every reply containing LaTeX: write the reply's markdown, exactly as it will be sent, to a
+   temp file and run `node <repo>/check.mjs <file>`. Fix each `FAIL` line, re-run, then send.
+4. Exit 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. On 2, send the
    reply anyway, tell the user the math wasn't checked, and see "When it breaks" below.
-
-Writing math that passes the first time: before writing math, read `<repo>/FIXES.md`, the rules
-for what renders, and `<repo>/fixes.local.md` if it exists. Use those forms from the start.
 
 Learn from every failure. Each fail-and-retry round costs a re-run and a rewrite, so don't hit the
 same failure twice:
@@ -24,8 +25,10 @@ same failure twice:
   those.
 
 Keeping token use low:
-- Run it once per finished draft, not per formula. Output is already minimal: only failures plus a
-  summary line. A reply without math costs 0.2 s and prints `ok: no math`.
+- Read FIXES.md and `fixes.local.md` once per session, not before every reply. Re-read
+  `fixes.local.md` only after appending to it.
+- Run the checker once per finished draft, not per formula. Output is already minimal: only
+  failures plus a summary line. A reply without math costs 0.2 s and prints `ok: no math`.
 - Don't read `check.mjs`, the tests or the app bundle during normal use.
 - Plain dollar amounts like "$5 and $10" are reported as failures; that's a known false positive.
   Ignore it.
@@ -36,9 +39,9 @@ Keeping token use low:
 Two signs:
 - **Exit 2.** The error message names the step that failed.
 - **The user reports that math didn't render as intended**, even though the checker passed it, or
-  that it flagged math that does render. Treat this as a bug in the checker, not the user's eyes. Put
-  the exact text in a new `tests/*.md` file and add its expected result as the user describes it.
-  Then work out why the checker disagrees.
+  that it flagged math that does render. Treat this as a bug in the checker, not the user's eyes.
+  Reproduce it with the exact text in a temp file, work out why the checker disagrees, and tell
+  the user. Don't add it to `tests/`; the user curates those.
 
 The checker runs the installed app's own code, so app updates can break it. The app's file names and
 minified identifiers change every build, so everything is found by content. What it relies on:
