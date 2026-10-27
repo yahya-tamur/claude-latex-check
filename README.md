@@ -3,13 +3,21 @@
 > **Claude:** read [CLAUDE.md](CLAUDE.md) instead of this file. It covers usage, where the render rules
 > are, recording new fixes, keeping token use low, and fixing the checker after app updates.
 
-Checks that LaTeX in a markdown reply renders as math in the Claude desktop app's Code tab. It runs
-the installed app's own renderer (its markdown code, react-markdown and KaTeX) in a simulated
-browser (jsdom), then reports every formula that would show as plain text or as a KaTeX error.
+Fixes for LaTeX that doesn't render in the Claude desktop app's Code tab, plus a script that checks
+a reply before it's sent.
 
-The app decides heuristically whether a span is math, so valid TeX can still show as plain text:
-`$1/r$`, `$[L:k]$`, `$M \otimes_A -$`, any inline span over 60 characters, `$$x$$` mid-sentence,
-`\(x\)`. Running the app's own code catches exactly those cases.
+The app guesses which spans are math, so valid TeX can still show as plain text: `$1/r$`,
+`$[L:k]$`, `$M \otimes_A -$`, any inline span over 60 characters, `$$x$$` mid-sentence, `\(x\)`. The
+repo has three parts:
+
+- **[FIXES.md](FIXES.md), the main part:** a list of what fails and what renders instead, as rules
+  with examples. Claude reads it before writing math, so most replies render on the first try.
+- **`check.mjs`:** checks a draft by running the installed app's own renderer (its markdown code,
+  react-markdown and KaTeX) in a simulated browser (jsdom). It reports every formula that would
+  show as plain text or as a KaTeX error.
+- **A learning loop:** when the check fails and Claude finds a form that renders, it records both
+  in `fixes.local.md` and uses the working form from then on. You move entries from there into
+  FIXES.md over time.
 
 ## Setup
 
