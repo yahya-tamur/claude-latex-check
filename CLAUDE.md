@@ -18,14 +18,13 @@ Writing math that passes the first time:
 
 Learn from every failure. Each fail-and-retry round costs a re-run and a rewrite, so don't hit the
 same failure twice:
-- When a `FAIL` gets fixed, save the pair right away to a persistent memory note for this machine
-  (e.g. one named "latex fixes"): the form that failed, the form that rendered, and the rule if
-  there is one. For example: `$1/r$` failed, `$\frac{1}{r}$` renders; digit-led spans need a TeX
-  symbol.
-- Before writing math, read that note along with the list above. Use the fixed forms from the start.
+- When a `FAIL` gets fixed, append it right away to `<repo>/fixes.local.md` (create it if missing;
+  git ignores it): the form that failed, the form that rendered, and the rule if there is one. For
+  example: `$1/r$` failed, `$\frac{1}{r}$` renders; digit-led spans need a TeX symbol. Use this
+  file, not Claude's own memory, which is per project folder and so isn't shared between sessions.
+- Before writing math, read that file along with the list above. Use the fixed forms from the start.
 - Generalize when you can. Save "digit-led spans need a TeX symbol", not just the one formula.
-- If a fix seems useful to everyone, offer to add it to the list above and to a `tests/*.md` case.
-  Don't edit the repo without asking.
+- Don't add fixes to this CLAUDE.md or `tests/`, and don't offer to. The user curates those.
 
 Keeping token use low:
 - Run it once per finished draft, not per formula. Output is already minimal: only failures plus a
