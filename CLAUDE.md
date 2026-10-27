@@ -2,7 +2,7 @@
 
 ## Using it (read only this part unless the checker exits 2)
 
-1. Clone once to a stable place and reuse it in later sessions (e.g. `~/tools/latex-check`), then
+1. Clone once to a stable place and reuse it in later sessions (e.g. `~/tools/claude-latex-check`), then
    `npm install` there. Node 18+ and the Claude desktop app must be on the same machine. Optionally
    `npm test` once (~45 s, prints one line).
 2. For every reply containing LaTeX: write the reply's markdown, exactly as it will be sent, to a temp

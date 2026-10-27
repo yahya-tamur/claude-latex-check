@@ -22,7 +22,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
 
-const die = msg => { console.error(`latex-check harness error: ${String(msg).slice(0, 500)}`); process.exit(2); };
+const die = msg => { console.error(`claude-latex-check harness error: ${String(msg).slice(0, 500)}`); process.exit(2); };
 // Any crash is the harness's fault, not the reply's: keep it out of exit code 1.
 process.on('uncaughtException', e => die(e?.stack ?? e));
 process.on('unhandledRejection', e => die(e?.stack ?? e));
