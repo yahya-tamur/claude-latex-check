@@ -1,0 +1,1 @@
+- item with \(x^2\) and $y_1$ and $z_1$
