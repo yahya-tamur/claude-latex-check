@@ -25,6 +25,8 @@ const expected = {
   '15-bracket-span.md': '1 failed, 2 rendered',        // $[L:k]$ fails; $n = [L:k]$ and $$[L:k] = 2$$ render
   '16-trailing-operator.md': '1 failed, 1 rendered',   // $M \otimes_A -$ fails
   '17-quote-adjacent.md': '1 failed, 1 rendered',      // $p$" fails
+  // "$F$, -$x$, /$y$, :$z$ fail; reworded and curly-quoted forms render
+  '18-quote-before.md': '4 failed, 3 rendered',
 };
 
 let bad = 0;

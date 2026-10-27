@@ -20,10 +20,15 @@ math.
 - **Don't end a span with an operator** (`-`, `+`, `=`, `,`, `:`, …).
   - Fails: `$M \otimes_A -$`
   - Renders: `$N \mapsto M \otimes_A N$`
-- **Nothing but a space or punctuation like `.,;:!?)` right after the closing `$`.** In particular,
-  no `"` right after it.
-  - Fails: `"a scheme of characteristic $p$", they mean`
-  - Renders: `A *scheme of characteristic* $p$ means`
+- **Watch what touches the dollars.**
+  - Right before the opening `$`: only a line start, a space, `(`, `[` or a non-ASCII character.
+    Straight quotes `"` `'`, `-`, `/`, `:`, letters and digits make it text.
+  - Right after the closing `$`: only a space, a line end, punctuation like `.,;:!?)` or a
+    non-ASCII character. Again, no straight `"`.
+  - Emphasis markers `*` and `_` don't count, so `*$p$*` is fine.
+  - Fails: `means "$F$ has no repeated roots"`, `"a scheme of characteristic $p$", they mean`
+  - Renders: curly quotes, as in `means “$F$ has no repeated roots”`, or rewording, as in
+    `means that $F$ has no repeated roots` and `A *scheme of characteristic* $p$ means`
 - **Keep each span on one line.**
 
 ## Display `$$...$$`

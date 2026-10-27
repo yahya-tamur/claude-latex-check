@@ -29,7 +29,7 @@ npm install
 npm test
 ```
 
-`npm test` runs `tests/*.md` (17 cases, ~1 minute) and compares each result with what's expected.
+`npm test` runs `tests/*.md` (18 cases, ~1 minute) and compares each result with what's expected.
 There's a case for every rule in FIXES.md. If anything differs after an app update, the app's math
 handling or its internals changed.
 
