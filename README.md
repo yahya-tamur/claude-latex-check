@@ -6,9 +6,8 @@
 Fixes for LaTeX that doesn't render in the Claude desktop app's Code tab, plus a script that checks
 a reply before it's sent.
 
-The app guesses which spans are math, so valid TeX can still show as plain text: `$1/r$`,
-`$[L:k]$`, `$M \otimes_A -$`, any inline span over 60 characters, `$$x$$` mid-sentence, `\(x\)`. The
-repo has three parts:
+The app guesses which spans are math, so valid TeX can still show as plain text, for example
+`$1/r$`, `$M \otimes_A -$` or any inline span over 60 characters. The repo has three parts:
 
 - **[FIXES.md](FIXES.md), the main part:** a list of what fails and what renders instead, as rules
   with examples. Claude reads it before writing math, so most replies render on the first try.
