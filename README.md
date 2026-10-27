@@ -1,5 +1,8 @@
 # claude-latex-check
 
+> **Claude:** read [CLAUDE.md](CLAUDE.md) instead of this file. It covers usage, writing math that
+> passes, keeping token use low, and fixing the checker after app updates.
+
 Checks that LaTeX in a markdown reply renders as math in the Claude desktop app's Code tab. It runs
 the installed app's own renderer (its markdown code, react-markdown and KaTeX) in a simulated
 browser (jsdom), then reports every formula that would show as plain text or as a KaTeX error.
