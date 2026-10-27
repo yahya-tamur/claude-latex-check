@@ -41,8 +41,6 @@ Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't
 `--flag off` simulates the app's inline-math feature flag being off; then only `$$` blocks render.
 The default is `on`.
 
-To have Claude use it automatically, put [PROMPT.md](PROMPT.md) in a CLAUDE.md.
-
 ## Platforms
 
 The app's bundle is looked up in these places:
