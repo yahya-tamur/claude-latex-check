@@ -1,3 +1,3 @@
-The functor $M \otimes_A -$ is right exact.
+The term $a \cdot b -$ is incomplete.
 
-The functor $N \mapsto M \otimes_A N$ is right exact.
+The map $c \mapsto a \cdot b \cdot c$ is complete.

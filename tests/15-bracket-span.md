@@ -1,5 +1,5 @@
-The degree $[L:k]$ is finite.
+The value $[a:b]$ is shown.
 
-The degree $n = [L:k]$ is finite.
+The value $n = [a:b]$ is shown.
 
-$$[L:k] = 2$$
+$$[a:b] = 2$$

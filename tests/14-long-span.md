@@ -1,12 +1,12 @@
-The map $\mathrm{Spec}\, \mathbb{C}[x]/(x^2) \to \mathrm{Spec}\, \mathbb{C}$ is finite.
+The polynomial $f(x) = c_0 + c_1 x + c_2 x^2 + c_3 x^3 + c_4 x^4 + c_5 x^5 + c_6 x^6$ is long.
 
-The scheme $\mathrm{Spec}\, \mathbb{F}_2 \sqcup \mathrm{Spec}\, \mathbb{F}_3$ has two points.
+The product $\mathbf{u} \cdot \mathbf{v} = u_1 v_1 + u_2 v_2 + u_3 v_3 + u_4 v_4 + u_5 v_5$ is long too.
 
-Split: $D \to \mathrm{Spec}\, \mathbb{C}$ where $D = \mathrm{Spec}\, \mathbb{C}[x]/(x^2)$.
+Split: $f(x) = g(x) + c_6 x^6$ where $g(x) = c_0 + c_1 x + c_2 x^2 + c_3 x^3 + c_4 x^4 + c_5 x^5$.
 
-The disjoint union of $\mathrm{Spec}\, \mathbb{F}_2$ and $\mathrm{Spec}\, \mathbb{F}_3$.
+The sum of $u_1 v_1 + u_2 v_2 + u_3 v_3$ and $u_4 v_4 + u_5 v_5$.
 
-$$\mathrm{Spec}\, \mathbb{C}[x]/(x^2) \to \mathrm{Spec}\, \mathbb{C}$$
+$$f(x) = c_0 + c_1 x + c_2 x^2 + c_3 x^3 + c_4 x^4 + c_5 x^5 + c_6 x^6$$
 
 At the limit, 60 characters: $x_1+x_1+x_1+x_1+x_1+x_1+x_1+x_1+x_1+x_1+x_1+x_1+x_1+x_1+x_1y$ renders.
 

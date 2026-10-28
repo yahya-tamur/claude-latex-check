@@ -21,6 +21,11 @@ same failure twice:
   example: `$1/r$` failed, `$\frac{1}{r}$` renders; digit-led spans need a TeX symbol. Use this
   file, not Claude's own memory, which is per project folder and so isn't shared between sessions.
 - Generalize when you can. Save "digit-led spans need a TeX symbol", not just the one formula.
+- Anonymize entries. The file may be shared or published, so it must not reveal what the
+  conversation was about. Replace the subject's symbols and wording with neutral ones (`x`, `f`,
+  `a`, `b`, "property P") while keeping whatever the rule depends on: length, first and last
+  character, operators, and what touches the dollars. Run both anonymized forms through `check.mjs`
+  to confirm the failing one still fails and the fixed one still renders.
 - Don't add fixes to `FIXES.md`, this CLAUDE.md or `tests/`, and don't offer to. The user curates
   those.
 

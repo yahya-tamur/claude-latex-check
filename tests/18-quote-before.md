@@ -1,9 +1,9 @@
-It means "$F$ has no repeated roots".
+It means "$f$ has property P".
 
-It means that $F$ has no repeated roots.
+It means that $f$ has property P.
 
-It means “$F$ has no repeated roots” here.
+It means “$f$ has property P” here.
 
-A “scheme of characteristic $p$”, they mean.
+A “thing of kind $k$”, they say.
 
 Dash-$x$ and slash/$y$ and colon:$z$ fail.

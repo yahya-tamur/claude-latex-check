@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const expected = {
-  '01-moments.md': '1 failed, 14 rendered',            // $1/r$: starts with a digit, no TeX operator
+  '01-mixed.md': '1 failed, 14 rendered',              // $1/r$: starts with a digit, no TeX operator
   '02-digits.md': '2 failed, 1 rendered',              // $1/r$, $2x$ fail; $\frac{1}{r}$ renders
   '03-inline-dd.md': '1 failed, 0 rendered',           // $$...$$ mid-sentence stays text
   '04-katex-error.md': '1 failed, 1 rendered',         // \frac{1} is a KaTeX error
@@ -22,10 +22,10 @@ const expected = {
   '13-backslash-delims.md': '7 failed, 4 rendered',
   // two >60-char spans and the 61-char boundary fail; split forms, $$ form and 60 chars render
   '14-long-span.md': '3 failed, 6 rendered',
-  '15-bracket-span.md': '1 failed, 2 rendered',        // $[L:k]$ fails; $n = [L:k]$ and $$[L:k] = 2$$ render
-  '16-trailing-operator.md': '1 failed, 1 rendered',   // $M \otimes_A -$ fails
-  '17-quote-adjacent.md': '1 failed, 1 rendered',      // $p$" fails
-  // "$F$, -$x$, /$y$, :$z$ fail; reworded and curly-quoted forms render
+  '15-bracket-span.md': '1 failed, 2 rendered',        // $[a:b]$ fails; $n = [a:b]$ and $$[a:b] = 2$$ render
+  '16-trailing-operator.md': '1 failed, 1 rendered',   // $a \cdot b -$ fails
+  '17-quote-adjacent.md': '1 failed, 1 rendered',      // $k$" fails
+  // "$f$, -$x$, /$y$, :$z$ fail; reworded and curly-quoted forms render
   '18-quote-before.md': '4 failed, 3 rendered',
 };
 

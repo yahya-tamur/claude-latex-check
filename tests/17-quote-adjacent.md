@@ -1,3 +1,3 @@
-When people say "a scheme of characteristic $p$", they mean something specific.
+When people say "a thing of kind $k$", they mean something specific.
 
-A *scheme of characteristic* $p$ means something specific.
+A *thing of kind* $k$ means something specific.
