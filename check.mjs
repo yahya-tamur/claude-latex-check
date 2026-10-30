@@ -136,9 +136,22 @@ if (!existsSync(join(dir, '.ok'))) {
     if (!re.test(s)) die(`can't ${what} in ${name}`);
     writeFileSync(join(dir, name), s.replace(re, to));
   };
-  // Pin the inline-math flag: the hook does `x=<flagFn>(),{display:...}=...`.
-  const flagFn = read(dir, files.renderer).match(/([\w$]+)=([\w$]+)\(\),\{display:/)?.[2]
-    ?? die('inline-math flag function not found');
+  // Pin the inline-math flag. Older builds: the hook does `x=<flagFn>(),{display:...}=...`.
+  // Newer builds: `x=<flagFn>()` in the hook, then x is passed as the second argument to the
+  // function that returns {display, guardedInline, ...}.
+  const flagFn = (() => {
+    const s = read(dir, files.renderer);
+    const direct = s.match(/([\w$]+)=([\w$]+)\(\),\{display:/)?.[2];
+    if (direct) return direct;
+    const gates = [...s.matchAll(/function ([\w$]+)\([\w$]+,[\w$]+\)\{[^{}]*return\{display:[^{}]*guardedInline:/g)];
+    if (gates.length !== 1) return;
+    const calls = [...s.matchAll(new RegExp(`(?<![\\w$.]|function )${escapeRe(gates[0][1])}\\([\\w$]+,([\\w$]+)\\)`, 'g'))];
+    if (calls.length !== 1) return;
+    // The flag variable is assigned shortly before the call, inside the hook.
+    const before = s.slice(Math.max(0, calls[0].index - 600), calls[0].index);
+    const assigns = [...before.matchAll(new RegExp(`[,;{ ]${escapeRe(calls[0][1])}=([\\w$]+)\\(\\)[,;]`, 'g'))];
+    return assigns.at(-1)?.[1];
+  })() ?? die('inline-math flag function not found');
   patch(files.renderer, new RegExp(`function ${escapeRe(flagFn)}\\(\\)\\{(?:[^{}]|\\{[^{}]*\\})*\\}`),
     `function ${flagFn}(){return!${flag === 'on' ? 0 : 1}}`, 'pin the inline-math flag');
   // No GrowthBook provider outside the app: treat every other flag as absent instead of throwing.
