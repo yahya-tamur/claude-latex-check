@@ -72,7 +72,10 @@ The app's bundle is looked up in these places:
 | Windows | `%LOCALAPPDATA%\AnthropicClaude\app-<version>\resources` (newest version) |
 
 Only the first Linux location has been tested. Elsewhere, set `CLAUDE_DESKTOP_RESOURCES` to the folder
-that contains `ion-dist`.
+that contains `ion-dist` (or `ion-dist.asar`).
+
+Newer app builds pack the bundle into `ion-dist.asar`. The checker then unpacks it once into the
+cache (about 190 MB) and reuses that until the archive changes.
 
 The first run for each app version copies and patches the bundle, about 150 MB, into a cache, and
 removes copies for older versions. Cache locations: `~/.cache/claude-latex-check` (Linux, or

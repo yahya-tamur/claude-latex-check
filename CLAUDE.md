@@ -73,7 +73,8 @@ keeping this pipeline but drawing the Code tab with a different one. Only `npm t
 the user sees in the real app catches that.
 
 Fixing, cheaply:
-- Bundle: `<resources>/ion-dist/assets/v1/` (Linux `/usr/lib/claude-desktop/resources`). It has ~3,800
+- Bundle: `<resources>/ion-dist/assets/v1/` (Linux `/usr/lib/claude-desktop/resources`). Newer builds ship
+  `ion-dist.asar` instead; `check.mjs` unpacks it to `<cache>/asar-<hash>/ion-dist/`, so grep there. It has ~3,800
   minified `.js` files, with single lines up to ~500 KB. Never print whole files or lines: use
   `grep -l` to find files and `grep -oE '.{0,200}MARKER.{0,200}'` to see context. Pipe node errors
   through `cut -c1-300 | head`, because stack traces echo minified source lines.

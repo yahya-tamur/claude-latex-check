@@ -10,16 +10,17 @@
 // exit 0 = everything rendered, 1 = something didn't, 2 = harness broke (app not found or changed).
 //
 // Environment overrides:
-//   CLAUDE_DESKTOP_RESOURCES  the app's resources folder (the one containing ion-dist), for installs
+//   CLAUDE_DESKTOP_RESOURCES  the app's resources folder (the one containing ion-dist or ion-dist.asar), for installs
 //                             in places not listed in appAssets() below
 //   LATEX_CHECK_CACHE         where the patched bundle copy is kept
 //
 // Bundle file names and minified export names change between app versions, so modules are found
 // by what they contain and exports by what their code does.
-import { readFileSync, existsSync, mkdirSync, cpSync, writeFileSync, readdirSync, rmSync } from 'fs';
+import { readFileSync, existsSync, mkdirSync, cpSync, writeFileSync, readdirSync, rmSync, openSync, readSync,
+  closeSync, statSync, renameSync } from 'fs';
 import { createHash } from 'crypto';
 import { homedir } from 'os';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { pathToFileURL } from 'url';
 
 const die = msg => { console.error(`claude-latex-check harness error: ${String(msg).slice(0, 500)}`); process.exit(2); };
@@ -29,6 +30,44 @@ process.on('unhandledRejection', e => die(e?.stack ?? e));
 
 const home = homedir(), env = process.env;
 const ls = d => { try { return readdirSync(d); } catch { return []; } };
+// Newer builds pack ion-dist into ion-dist.asar. Unpack it once per archive into the cache;
+// returns the unpacked folder's name under cacheRoot.
+let asarDir;
+function unpackAsar(archive) {
+  const st = statSync(archive);
+  asarDir = `asar-${createHash('sha1').update(`${archive}:${st.size}:${st.mtimeMs}`).digest('hex').slice(0, 12)}`;
+  const out = join(cacheRoot, asarDir, 'ion-dist');
+  if (existsSync(join(cacheRoot, asarDir, '.ok'))) return out;
+  for (const d of ls(cacheRoot)) if (d.startsWith('asar-')) rmSync(join(cacheRoot, d), { recursive: true, force: true });
+  // Format: [4][header pickle size] [4][payload size][4][json length][json] then file data.
+  const fd = openSync(archive, 'r');
+  const head = Buffer.alloc(16);
+  readSync(fd, head, 0, 16, 0);
+  const json = Buffer.alloc(head.readUInt32LE(12));
+  readSync(fd, json, 0, json.length, 16);
+  const base = 8 + head.readUInt32LE(4);
+  const tmp = join(cacheRoot, `${asarDir}.tmp`);
+  rmSync(tmp, { recursive: true, force: true });
+  (function walk(node, rel) {
+    mkdirSync(join(tmp, rel), { recursive: true });
+    for (const [name, e] of Object.entries(node.files)) {
+      const r = join(rel, name);
+      if (e.files) walk(e, r);
+      else if (e.link) continue;
+      else if (e.unpacked) cpSync(join(`${archive}.unpacked`, r), join(tmp, r));
+      else {
+        const buf = Buffer.alloc(e.size);
+        if (e.size) readSync(fd, buf, 0, e.size, base + Number(e.offset));
+        writeFileSync(join(tmp, r), buf);
+      }
+    }
+  })(JSON.parse(json.toString('utf8')), 'ion-dist');
+  closeSync(fd);
+  writeFileSync(join(tmp, '.ok'), '');
+  renameSync(tmp, dirname(out));
+  return out;
+}
+
 // The app's web UI bundle: <resources>/ion-dist/assets/<v>/ holding the .js chunks.
 function appAssets() {
   const resources = env.CLAUDE_DESKTOP_RESOURCES ? [env.CLAUDE_DESKTOP_RESOURCES] : {
@@ -42,7 +81,8 @@ function appAssets() {
       .map(d => join(env.LOCALAPPDATA ?? join(home, 'AppData', 'Local'), 'AnthropicClaude', d, 'resources')),
   }[process.platform] ?? [];
   for (const r of resources) {
-    const assets = join(r, 'ion-dist', 'assets');
+    const packed = !existsSync(join(r, 'ion-dist')) && existsSync(join(r, 'ion-dist.asar'));
+    const assets = join(packed ? unpackAsar(join(r, 'ion-dist.asar')) : join(r, 'ion-dist'), 'assets');
     const v = ls(assets).find(d => ls(join(assets, d)).some(f => f.startsWith('vendor-frame-')));
     if (v) return join(assets, v);
   }
@@ -87,7 +127,7 @@ const ver = createHash('sha1').update(jsFiles.sort().join()).digest('hex').slice
 const dir = join(cacheRoot, `${ver}-${flag}`);
 if (!existsSync(join(dir, '.ok'))) {
   // Copies for older app versions are dead weight (~150 MB each).
-  for (const d of ls(cacheRoot)) if (!d.startsWith(`${ver}-`)) rmSync(join(cacheRoot, d), { recursive: true, force: true });
+  for (const d of ls(cacheRoot)) if (!d.startsWith(`${ver}-`) && d !== asarDir) rmSync(join(cacheRoot, d), { recursive: true, force: true });
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   cpSync(SRC, dir, { recursive: true });
