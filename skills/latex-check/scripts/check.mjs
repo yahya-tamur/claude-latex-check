@@ -39,15 +39,12 @@ process.on('unhandledRejection', e => die(e?.stack ?? e));
 const home = homedir(), env = process.env;
 const ls = d => { try { return readdirSync(d); } catch { return []; } };
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// Newer builds pack ion-dist into ion-dist.asar. Unpack it once per archive into the cache;
-// returns the unpacked folder's name under cacheRoot.
-let asarDir;
-function unpackAsar(archive) {
-  const st = statSync(archive);
-  asarDir = `asar-${createHash('sha1').update(`${archive}:${st.size}:${st.mtimeMs}`).digest('hex').slice(0, 12)}`;
-  const out = join(cacheRoot, asarDir, 'ion-dist');
-  if (existsSync(join(cacheRoot, asarDir, '.ok'))) return out;
-  for (const d of ls(cacheRoot)) if (d.startsWith('asar-')) rmSync(join(cacheRoot, d), { recursive: true, force: true });
+// Files the checker never loads: icons, images, fonts and stylesheets. It inspects the rendered
+// HTML, not how it looks.
+const unused = /\.(svg|png|webp|jpe?g|gif|ico|woff2?|ttf|otf|eot|css)$/i;
+
+// Newer builds pack ion-dist into ion-dist.asar: unpack it, minus unused files, into out.
+function unpackAsar(archive, out) {
   // Format: [4][header pickle size] [4][payload size][4][json length][json] then file data.
   const fd = openSync(archive, 'r');
   const head = Buffer.alloc(16);
@@ -55,26 +52,21 @@ function unpackAsar(archive) {
   const json = Buffer.alloc(head.readUInt32LE(12));
   readSync(fd, json, 0, json.length, 16);
   const base = 8 + head.readUInt32LE(4);
-  const tmp = join(cacheRoot, `${asarDir}.tmp`);
-  rmSync(tmp, { recursive: true, force: true });
   (function walk(node, rel) {
-    mkdirSync(join(tmp, rel), { recursive: true });
+    mkdirSync(join(out, rel), { recursive: true });
     for (const [name, e] of Object.entries(node.files)) {
       const r = join(rel, name);
       if (e.files) walk(e, r);
-      else if (e.link) continue;
-      else if (e.unpacked) cpSync(join(`${archive}.unpacked`, r), join(tmp, r));
+      else if (e.link || unused.test(name)) continue;
+      else if (e.unpacked) cpSync(join(`${archive}.unpacked`, r), join(out, r));
       else {
         const buf = Buffer.alloc(e.size);
         if (e.size) readSync(fd, buf, 0, e.size, base + Number(e.offset));
-        writeFileSync(join(tmp, r), buf);
+        writeFileSync(join(out, r), buf);
       }
     }
   })(JSON.parse(json.toString('utf8')), 'ion-dist');
   closeSync(fd);
-  writeFileSync(join(tmp, '.ok'), '');
-  renameSync(tmp, dirname(out));
-  return out;
 }
 
 const args = process.argv.slice(2);
@@ -108,7 +100,7 @@ if (showFixes || addFix !== undefined) {
 }
 // The resources folder of the running desktop app, next to its executable. The app runs whenever
 // the Code tab is in use, and its path is always the current version. Claude Code's own CLI is also
-// called claude, but has no resources folder; appAssets() skips folders without the app's code.
+// called claude, but has no resources folder; appBundle() skips folders without the app's code.
 function runningApp() {
   try {
     if (process.platform === 'linux') {
@@ -130,8 +122,16 @@ function runningApp() {
   } catch {}
   return [];
 }
-function appAssets() {
-  // The app's web UI bundle: <resources>/ion-dist/assets/<v>/ holding the .js chunks.
+// The app's web UI bundle: <ion-dist>/assets/<v>/ holding the .js chunks.
+function assetsIn(ionDist) {
+  const assets = join(ionDist, 'assets');
+  const v = ls(assets).find(d => ls(join(assets, d)).some(f => f.startsWith('vendor-frame-')));
+  return v && join(assets, v);
+}
+// The app's ion-dist, as { copy: folder } or { asar: archive }, plus a key that changes with
+// every app version.
+function appBundle() {
+  const sha = s => createHash('sha1').update(s).digest('hex').slice(0, 12);
   const found = env.CLAUDE_DESKTOP_RESOURCES ? [env.CLAUDE_DESKTOP_RESOURCES] : [...runningApp(), ...{
     linux: ['/usr/lib/claude-desktop/resources', '/opt/Claude/resources', '/opt/claude-desktop/resources',
       '/usr/lib/claude/resources'],
@@ -144,10 +144,10 @@ function appAssets() {
   }[process.platform] ?? []];
   const resources = [...new Set(found)];
   for (const r of resources) {
-    const packed = !existsSync(join(r, 'ion-dist')) && existsSync(join(r, 'ion-dist.asar'));
-    const assets = join(packed ? unpackAsar(join(r, 'ion-dist.asar')) : join(r, 'ion-dist'), 'assets');
-    const v = ls(assets).find(d => ls(join(assets, d)).some(f => f.startsWith('vendor-frame-')));
-    if (v) return join(assets, v);
+    const copy = join(r, 'ion-dist'), asar = join(r, 'ion-dist.asar');
+    const assets = assetsIn(copy);
+    if (assets) return { copy, key: sha(ls(assets).filter(f => f.endsWith('.js')).sort().join()) };
+    if (existsSync(asar)) { const st = statSync(asar); return { asar, key: sha(`${asar}:${st.size}:${st.mtimeMs}`) }; }
   }
   die(`Claude desktop app bundle not found (looked in: ${resources.join(', ') || 'nothing for ' + process.platform}).`);
 }
@@ -165,12 +165,24 @@ const prose = text.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, '');
 const hasDelimiters = /\$|\\\(|\\\[/.test(prose);
 if (!hasDelimiters && !/\\[a-zA-Z]{2,}/.test(prose)) { console.log('ok: no math'); process.exit(0); }
 
-const SRC = appAssets();
-const jsFiles = readdirSync(SRC).filter(f => f.endsWith('.js'));
+// One patched copy of the app's ion-dist per app version, minus unused files. It's built in a
+// .tmp folder and renamed when complete, so an interrupted build is never used.
+const app = appBundle();
+const cacheDir = join(cacheRoot, app.key);
+const fresh = !existsSync(join(cacheDir, '.ok'));
+const buildDir = fresh ? `${cacheDir}.tmp` : cacheDir;
+if (fresh) {
+  // Copies for older app versions are dead weight (~150 MB each).
+  for (const d of ls(cacheRoot)) rmSync(join(cacheRoot, d), { recursive: true, force: true });
+  if (app.asar) unpackAsar(app.asar, buildDir);
+  else cpSync(app.copy, join(buildDir, 'ion-dist'), { recursive: true, filter: f => !unused.test(f) });
+}
+let dir = assetsIn(join(buildDir, 'ion-dist')) ?? die(`no app bundle in ${app.asar ?? app.copy}`);
+const jsFiles = readdirSync(dir).filter(f => f.endsWith('.js'));
 const read = (dir, f) => readFileSync(join(dir, f), 'utf8');
 function findFile(marker) {
   const has = s => (marker instanceof RegExp ? marker.test(s) : s.includes(marker));
-  const hits = jsFiles.filter(f => has(read(SRC, f)));
+  const hits = jsFiles.filter(f => has(read(dir, f)));
   if (hits.length !== 1) die(`expected one bundle file containing ${marker}, found ${hits.length}`);
   return hits[0];
 }
@@ -181,21 +193,13 @@ const files = {
   markdown: findFile(/\.runSync\([\w$]+\.parse\(/),  // react-markdown
 };
 
-// Patched copy of the bundle, cached per app version and flag state.
-const ver = createHash('sha1').update(jsFiles.sort().join()).digest('hex').slice(0, 12);
-const dir = join(cacheRoot, `${ver}-${flag}`);
-if (!existsSync(join(dir, '.ok'))) {
-  // Copies for older app versions are dead weight (~150 MB each).
-  for (const d of ls(cacheRoot)) if (!d.startsWith(`${ver}-`) && d !== asarDir) rmSync(join(cacheRoot, d), { recursive: true, force: true });
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
-  cpSync(SRC, dir, { recursive: true });
+if (fresh) {
   const patch = (name, re, to, what) => {
     const s = read(dir, name);
     if (!re.test(s)) die(`can't ${what} in ${name}`);
     writeFileSync(join(dir, name), s.replace(re, to));
   };
-  // Pin the inline-math flag. Older builds: the hook does `x=<flagFn>(),{display:...}=...`.
+  // Make the inline-math flag follow --flag (a global set below). Older builds: the hook does `x=<flagFn>(),{display:...}=...`.
   // Newer builds: `x=<flagFn>()` in the hook, then x is passed as the second argument to the
   // function that returns {display, guardedInline, ...}.
   const flagFn = (() => {
@@ -212,7 +216,7 @@ if (!existsSync(join(dir, '.ok'))) {
     return assigns.at(-1)?.[1];
   })() ?? die('inline-math flag function not found');
   patch(files.renderer, new RegExp(`function ${escapeRe(flagFn)}\\(\\)\\{(?:[^{}]|\\{[^{}]*\\})*\\}`),
-    `function ${flagFn}(){return!${flag === 'on' ? 0 : 1}}`, 'pin the inline-math flag');
+    `function ${flagFn}(){return globalThis.__latexCheckInlineMath!==!1}`, 'pin the inline-math flag');
   // No GrowthBook provider outside the app: treat every other flag as absent instead of throwing.
   const gbRe = /if\(!([\w$]+)\)throw [\w$]+\(Error\("Missing or invalid GrowthBookProvider"\)[^;]*;/;
   const gbFiles = jsFiles.filter(f => gbRe.test(read(dir, f)));
@@ -225,7 +229,9 @@ if (!existsSync(join(dir, '.ok'))) {
   patch(files.preload, new RegExp(`export\\{([^}]*)\\b${escapeRe(preloadFn)} as `),
     'const __pass=f=>f();export{$1__pass as ', 'replace the chunk preloader');
   writeFileSync(join(dir, 'package.json'), '{"type":"module"}');
-  writeFileSync(join(dir, '.ok'), '');
+  writeFileSync(join(buildDir, '.ok'), '');
+  renameSync(buildDir, cacheDir);
+  dir = assetsIn(join(cacheDir, 'ion-dist'));
 }
 
 // jsdom: the repo's own node_modules in a dev checkout, else the data folder (installed there once).
@@ -248,6 +254,7 @@ function loadJsdom() {
   if (r.status !== 0) die(`couldn't install jsdom into ${dataDir} (npm exit ${r.status})`);
   return req(join(dataDir, 'node_modules', 'jsdom'));
 }
+globalThis.__latexCheckInlineMath = flag === 'on';
 const { setupBrowser } = await import('./env.mjs');
 setupBrowser(loadJsdom().JSDOM);
 const quiet = console.log;
@@ -280,7 +287,7 @@ const [, ReactMarkdown] = pickOne(await load(files.markdown),
 // markdown component (memo-wrapped, takes `text`, sets up the same in-house LaTeX plugin itself).
 let ChatMarkdown;
 if (surface === 'chat') {
-  const chatFiles = jsFiles.filter(f => { const s = read(SRC, f); return s.includes('inHouseLatexPlugin:') && s.includes('normalizationMode:'); });
+  const chatFiles = jsFiles.filter(f => { const s = read(dir, f); return s.includes('inHouseLatexPlugin:') && s.includes('normalizationMode:'); });
   const memos = (await Promise.all(chatFiles.map(f => import(pathToFileURL(join(dir, f)).href))))
     .flatMap(m => Object.entries(m)).filter(([, v]) => v?.$$typeof === Symbol.for('react.memo') && typeof v.type === 'function');
   [, ChatMarkdown] = pickOne(memos.map(([k, v]) => [k, v]),
@@ -293,7 +300,7 @@ console.log = quiet;
 if (!existsSync(join(dir, '.wired'))) {
   const importRe = new RegExp(`import\\{[^}]*\\b${escapeRe(hookName)} as ([\\w$]+)[^}]*\\}from"\\./${escapeRe(files.renderer)}"`);
   const wired = jsFiles.some(f => {
-    const s = read(SRC, f), alias = s.match(importRe)?.[1];
+    const s = read(dir, f), alias = s.match(importRe)?.[1];
     return alias && new RegExp(`(?<![\\w$.])${escapeRe(alias)}\\([\\w$]+,"chat",!0[,)]`).test(s);
   });
   if (!wired) die('no app component calls the markdown hook as hook(text, "chat", true) any more');

@@ -113,11 +113,12 @@ rely on a fixed list. It looks in this order:
 `CLAUDE_DESKTOP_RESOURCES` overrides both. If the app isn't found, Claude checks with `lint.mjs`
 instead.
 
-The first run for each app version copies and patches the app's code into a cache, and removes
-copies for older versions. Newer app builds pack it into `ion-dist.asar`, which is unpacked once
-first. Expect a few hundred MB. Cache locations: `~/.cache/claude-latex-check` (Linux, or
-`$XDG_CACHE_HOME`), `~/Library/Caches/claude-latex-check` (macOS),
-`%LOCALAPPDATA%\claude-latex-check` (Windows). Override with `LATEX_CHECK_CACHE`.
+The first run for each app version copies the app's code into a cache, unpacking it from
+`ion-dist.asar` in newer builds, and patches it. It leaves out icons, fonts and stylesheets, which
+the checker never loads, and removes the copy for the previous version. Expect about 190 MB.
+Cache locations: `~/.cache/claude-latex-check` (Linux, or `$XDG_CACHE_HOME`),
+`~/Library/Caches/claude-latex-check` (macOS), `%LOCALAPPDATA%\claude-latex-check` (Windows).
+Override with `LATEX_CHECK_CACHE`.
 
 ## How the checker works
 
