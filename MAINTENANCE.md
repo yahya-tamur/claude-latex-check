@@ -3,16 +3,15 @@
 ## Where new rules come from
 
 - **Code tab:** each machine records the fixes its sessions found in `fixes.local.md`, in the
-  plugin's data folder: `~/.claude/plugins/data/latex-check-inline/` for an install from the
-  desktop app's **Customize > Plugins**, `~/.claude/plugins/data/latex-check-latex-check/` for one
-  from the `claude plugin` commands. `node skills/latex-check/scripts/check.mjs --data <folder>
-  --show-fixes` prints them. These are the best source of new rules.
+  plugin's data folder (`${CLAUDE_PLUGIN_DATA}`, a folder under `~/.claude/plugins/data/`).
+  `node skills/latex-check/scripts/check.mjs --data <folder> --show-fixes` prints them. These are
+  the best source of new rules.
 - **claude.ai and Cowork:** the chat skill records no local fixes. New rules come from reports, and
   from comparing renderers: `check.mjs --surface chat` renders through the chat view that claude.ai
   and Cowork share, so running a sample through both surfaces shows where they differ.
 
-The desktop app loads an account install the same way `claude --plugin-dir` does, so test runs with
-`--plugin-dir` read and write the same `latex-check-inline` folder. Don't delete it after testing.
+Test runs with `claude --plugin-dir` can share the data folder of the installed plugin, so don't
+delete the data folder after testing.
 
 ## When the rules change
 
