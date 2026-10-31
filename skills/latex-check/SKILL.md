@@ -55,14 +55,19 @@ Rewrite just that span:
    - Use "If a span is flagged" above, and the local fixes.
    - Edit each flagged span in the temp file in place. Don't regenerate the reply.
    - Re-run the checker on the edited file, then send that text.
-3. On exit 2, send the reply anyway and tell the user the math wasn't checked. Then:
+3. On exit 2, send the reply anyway, written by the rules, and handle it like this:
    - If the message says the app wasn't found, find the app's resources folder (the one containing
      `ion-dist` or `ion-dist.asar`; it varies by platform, store and version). Save it with
      `node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --set-app-path "<path>"`,
      with `*` in place of the version number, because the folder name changes with every update,
      e.g. `C:\Program Files\Claude_*\app\resources`. When several folders match, the most
      recently modified one is used.
-   - Otherwise, see `${CLAUDE_PLUGIN_ROOT}/MAINTENANCE.md`.
+   - Otherwise, an app update has probably broken the checker. Tell the user once per session that
+     math couldn't be checked, and suggest `claude plugin update latex-check@latex-check`, since a
+     fix may already be published. If it still fails after updating, suggest reporting it at
+     https://github.com/yahya-tamur/claude-latex-check/issues with the error message. Don't try to
+     repair the checker; fixes are made in the repository and reach everyone through updates. Keep
+     writing by the rules, and don't re-run the checker this session.
 
 Plain dollar amounts like "$5 and $10" are reported as failures. That's a known false positive;
 ignore it. Don't read `check.mjs`, the tests or the app's files during normal use.
@@ -84,8 +89,10 @@ Each fail-and-retry round costs edits and a re-run, so don't hit the same failur
 
 ## Talking to the user
 
-Don't mention the checker or these rules in replies unless the user asks.
+Don't mention the checker or these rules in replies unless the user asks, or the checker needs an
+update or a bug report as described here.
 
-If the user reports that math didn't render as intended even though the checker passed it, or that
-it flagged math that does render, treat it as a bug in the checker and see
-`${CLAUDE_PLUGIN_ROOT}/MAINTENANCE.md`.
+If the user reports that a formula didn't render even though the checker passed it, or that it
+flagged one that does render, fix the formula if needed, save an anonymized local fix as above, and
+suggest reporting it at https://github.com/yahya-tamur/claude-latex-check/issues with that example.
+Don't debug the checker.

@@ -1,19 +1,20 @@
 # Maintaining the checker
 
-Read this when the checker exits 2 for a reason other than not finding the app, or when the user
-reports that its verdict didn't match what the app showed.
+For the plugin's maintainer, and Claude sessions working in this repository. The skill doesn't send
+users' sessions here: on a broken checker they suggest a plugin update or a GitHub issue, so
+reports arrive as issues and fixes reach everyone through `claude plugin update`.
 
-Make changes in a clone of the repository, not in the installed plugin folder, which is replaced
-on every update: `git clone https://github.com/yahya-tamur/claude-latex-check`, then `npm install`
-and `npm test`. Ask the user before making changes there; they maintain the repository.
+Work in a clone of the repository, not in an installed plugin folder, which is replaced on every
+update: `git clone https://github.com/yahya-tamur/claude-latex-check`, then `npm install` and
+`npm test`.
 
 ## Signs that it's broken
 
-- **Exit 2.** The error message names the step that failed.
-- **The user reports that math didn't render as intended**, even though the checker passed it, or
-  that it flagged math that does render. Treat this as a bug in the checker, not the user's eyes.
-  Reproduce it with the exact text in a temp file, work out why the checker disagrees, and tell
-  the user. Don't add it to `tests/`; the user curates those.
+- **Exit 2** after an app update, on your machine or in a reported issue. The error message names
+  the step that failed.
+- **A formula reported as wrongly passed or flagged**, in an issue or by you. Treat it as a bug in
+  the checker. Reproduce it with the exact text in a temp file, work out why the checker disagrees,
+  and add a test once you've confirmed in the app how it really renders.
 
 ## What it relies on
 
