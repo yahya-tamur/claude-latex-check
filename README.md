@@ -9,21 +9,40 @@ a reply before it's sent.
 The app guesses which spans are math, so valid TeX can still show as plain text, for example
 `$1/r$`, `$a \cdot b -$` or any inline span over 60 characters. The repo has three parts:
 
-- **[FIXES.md](FIXES.md), the main part:** at the top, a few short rules for writing math that
-  renders. Claude offers to copy them into your global `~/.claude/CLAUDE.md`, which is loaded into
-  every turn of every session, so they're followed from the first draft. Below them is the full
-  list of what fails and what renders instead, with examples. Claude looks things up there when a
-  check fails.
+- **[FIXES.md](FIXES.md), the main part:** a few short rules for writing math that renders, then
+  a lookup list of what fails and what to write instead, with examples.
 - **`check.mjs`:** checks a draft by running the installed app's own renderer (its markdown code,
   react-markdown and KaTeX) in a simulated browser (jsdom). It reports every formula that would
   show as plain text or as a KaTeX error.
-- **A learning loop:** when the check fails, Claude rewrites only the flagged formulas. Once it
-  finds a form that renders, it records both in `fixes.local.md` and uses the working form from
-  then on. That file is git-ignored, one per
-  clone, and shared by every session on the machine. You move entries from it into FIXES.md over
-  time (see [Curating fixes](#curating-fixes)).
+- **A learning loop:** when the check fails, Claude looks up the fix and rewrites only the flagged
+  formulas. Once a form renders, it records both forms in `fixes.local.md` and uses the working one
+  from then on. That file is git-ignored, one per clone, and shared by every session on the
+  machine. You move entries from it into FIXES.md over time (see [Curating fixes](#curating-fixes)).
 
-## Setup
+## Using it with Claude
+
+Tell a Claude Code session on the machine, in any folder: "use
+github.com/yahya-tamur/claude-latex-check to check LaTeX before sending". Following
+[CLAUDE.md](CLAUDE.md), it:
+
+1. Clones the repo to a stable place (e.g. `~/tools/claude-latex-check`) and runs `npm install`.
+2. Offers to install it **globally, not just for that session**. It adds the short rules from
+   FIXES.md and one line pointing to the checker to your global `~/.claude/CLAUDE.md`. That file is
+   loaded into every turn of every Claude Code session on the machine, in every folder. So after
+   this one-time setup, every session writes math by the short rules from the first draft and
+   checks replies before sending. You don't have to mention the repo again.
+
+From then on, sessions:
+- write math by the short rules;
+- check each reply that contains math;
+- on a failure, read the lookup list once, edit only the flagged formulas, and re-check;
+- record each new fix in `fixes.local.md`.
+
+They talk about this only in plain terms, like "I rewrote a formula so it renders", without
+mentioning files or tools. When you update the short rules in FIXES.md, the next session on each
+machine offers to update its global copy.
+
+## Running it yourself
 
 Needs Node 18+ and the Claude desktop app installed on the same machine.
 
@@ -37,7 +56,7 @@ There's a case for every rule in FIXES.md. One more case is written strictly by 
 and must render fully. If anything differs after an app update, the app's math handling or its
 internals changed.
 
-## Usage
+To check a draft:
 
 ```bash
 node check.mjs reply.md
@@ -68,9 +87,6 @@ often, for each machine:
    it short. Extend `tests/25-short-rules.md` to use the new rule correctly.
 5. Run `npm test`.
 
-When the short rules change, Claude offers to update the copy in each machine's global CLAUDE.md
-on its next session there.
-
 ## Platforms
 
 The app's bundle is looked up in these places:
@@ -81,14 +97,12 @@ The app's bundle is looked up in these places:
 | macOS | `/Applications/Claude.app/Contents/Resources`, `~/Applications/Claude.app/Contents/Resources` |
 | Windows | `%LOCALAPPDATA%\AnthropicClaude\app-<version>\resources` (newest version) |
 
-Only the first Linux location has been tested. Elsewhere, set `CLAUDE_DESKTOP_RESOURCES` to the folder
-that contains `ion-dist` (or `ion-dist.asar`).
+Only the first Linux location has been tested. Elsewhere, set `CLAUDE_DESKTOP_RESOURCES` to the
+folder that contains `ion-dist` or `ion-dist.asar`.
 
-Newer app builds pack the bundle into `ion-dist.asar`. The checker then unpacks it once into the
-cache (about 190 MB) and reuses that until the archive changes.
-
-The first run for each app version copies and patches the bundle, about 150 MB, into a cache, and
-removes copies for older versions. Cache locations: `~/.cache/claude-latex-check` (Linux, or
+The first run for each app version copies and patches the bundle into a cache, and removes copies
+for older versions. Newer app builds pack the bundle into `ion-dist.asar`, which is unpacked once
+first. Expect a few hundred MB. Cache locations: `~/.cache/claude-latex-check` (Linux, or
 `$XDG_CACHE_HOME`), `~/Library/Caches/claude-latex-check` (macOS),
 `%LOCALAPPDATA%\claude-latex-check` (Windows). Override with `LATEX_CHECK_CACHE`.
 
