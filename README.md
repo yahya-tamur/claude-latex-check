@@ -22,8 +22,7 @@ The app guesses which spans are math, so valid TeX can still show as plain text,
   math before sending, and it reports every formula that would show as plain text or as a KaTeX
   error.
 - **Fixes:** when a check fails, Claude rewrites only the flagged formulas, and records each new fix
-  in a `fixes.local.md` file on that machine. You move those into the skill over time (see
-  [Curating fixes](#curating-fixes)).
+  in a `fixes.local.md` file on that machine, so it doesn't repeat the mistake.
 
 ## Installing
 
@@ -47,7 +46,7 @@ claude plugin update latex-check@latex-check
 |---|---|
 | [`skills/latex-check/SKILL.md`](skills/latex-check/SKILL.md) | The skill: the rules, what to write when a formula fails, and how Claude checks replies |
 | [`check.mjs`](check.mjs), `env.mjs` | The checker |
-| [`MAINTENANCE.md`](MAINTENANCE.md) | How to repair the checker after an app update |
+| [`MAINTENANCE.md`](MAINTENANCE.md) | Curating the rules from local fixes, and repairing the checker after an app update |
 | `tests/`, `test.mjs` | One test per kind of failure in the skill, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
 | `.claude-plugin/` | Plugin and marketplace manifests |
 
@@ -80,19 +79,6 @@ flag being off; then only `$$` blocks render. The default is `on`.
 
 `npm test` runs all 25 cases in `tests/` (~75 s) and compares each result with what's expected.
 Run it after changing the skill, the tests or `check.mjs`, or after an app update.
-
-## Curating fixes
-
-Every so often:
-
-1. Move entries from each machine's `fixes.local.md` (in the plugin's data folder) into the skill's
-   "If a span is flagged" section.
-2. Check the examples with `node check.mjs`.
-3. Add a `tests/*.md` case, with its expected summary in `test.mjs`.
-4. If a new rule isn't already implied by the skill's "Rules" section, update it, keeping it
-   short. Extend `tests/short-rules.md` to use the new rule correctly.
-5. Run `npm test` and `claude plugin validate .`, then commit and push.
-6. On each machine, update the plugin (see [Installing](#installing)).
 
 ## When the checker breaks
 

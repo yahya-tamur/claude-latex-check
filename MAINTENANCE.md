@@ -1,11 +1,25 @@
-# Maintaining the checker
+# Maintaining the plugin
 
-For anyone repairing the checker: the maintainer, Claude sessions working in this repository, or a
-user fixing it on their own machine.
+For anyone curating the rules or repairing the checker: the maintainer, Claude sessions working in
+this repository, or a user fixing it on their own machine.
 
 Work in a clone of the repository rather than an installed plugin folder, which is replaced on
 every update: `git clone https://github.com/yahya-tamur/claude-latex-check`, then `npm install` and
 `npm test`.
+
+## Curating fixes
+
+Each machine collects the fixes its sessions found in `fixes.local.md`, in the plugin's data folder
+(`~/.claude/plugins/data/<id>/`). To make them part of the plugin for everyone:
+
+1. Move entries from each machine's `fixes.local.md` into the skill's "If a span is flagged"
+   section.
+2. Check the examples with `node check.mjs`.
+3. Add a `tests/*.md` case, with its expected summary in `test.mjs`.
+4. If a new rule isn't already implied by the skill's "Rules" section, update it, keeping it
+   short. Extend `tests/short-rules.md` to use the new rule correctly.
+5. Run `npm test` and `claude plugin validate .`, then commit and push.
+6. On each machine, run `claude plugin update latex-check@latex-check`.
 
 ## Signs that it's broken
 
