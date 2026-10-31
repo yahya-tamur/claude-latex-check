@@ -239,16 +239,20 @@ if (!existsSync(join(dir, '.ok'))) {
 }
 
 // jsdom: the repo's own node_modules in a dev checkout, else the data folder (installed there once).
+// Only these two exact folders count: Node's normal lookup would also take a jsdom of any version
+// from a parent folder, such as the user's home.
 function loadJsdom() {
-  try { return createRequire(import.meta.url)('jsdom'); } catch {}
-  const req = createRequire(join(dataDir, 'package.json'));
-  try { return req('jsdom'); } catch {}
+  const req = createRequire(import.meta.url);
+  for (const base of [here, dataDir]) {
+    const pkg = join(base, 'node_modules', 'jsdom');
+    if (existsSync(join(pkg, 'package.json'))) return req(pkg);
+  }
   mkdirSync(dataDir, { recursive: true });
   console.error('claude-latex-check: installing jsdom into the data folder (one time)...');
   const r = spawnSync('npm', ['install', '--prefix', dataDir, '--no-audit', '--no-fund', '--silent', 'jsdom@24.1.3'],
     { stdio: ['ignore', 'ignore', 'inherit'], shell: process.platform === 'win32' });
   if (r.status !== 0) die(`couldn't install jsdom into ${dataDir} (npm exit ${r.status})`);
-  return req('jsdom');
+  return req(join(dataDir, 'node_modules', 'jsdom'));
 }
 const { setupBrowser } = await import('./env.mjs');
 setupBrowser(loadJsdom().JSDOM);
