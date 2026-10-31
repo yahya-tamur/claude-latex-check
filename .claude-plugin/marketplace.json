@@ -1,0 +1,14 @@
+{
+  "name": "latex-check",
+  "description": "LaTeX rendering fixes and checker for the Claude desktop app",
+  "owner": {
+    "name": "yahya-tamur"
+  },
+  "plugins": [
+    {
+      "name": "latex-check",
+      "source": "./",
+      "description": "Write LaTeX math that renders in the Claude desktop app's Code tab, and check replies before sending"
+    }
+  ]
+}

@@ -1,73 +1,83 @@
 # claude-latex-check
 
-> **Claude:** read [CLAUDE.md](CLAUDE.md) instead of this file. It covers usage, where the render rules
-> are, recording new fixes, keeping token use low, and fixing the checker after app updates.
-
-Fixes for LaTeX that doesn't render in the Claude desktop app's Code tab, plus a script that checks
-a reply before it's sent.
+A Claude Code plugin that makes LaTeX math render in the Claude desktop app's Code tab.
 
 The app guesses which spans are math, so valid TeX can still show as plain text, for example
-`$1/r$`, `$a \cdot b -$` or any inline span over 60 characters. The repo has three parts:
+`$1/r$`, `$a \cdot b -$` or any inline span over 60 characters. The plugin has one skill,
+`latex-check`, which Claude loads whenever a reply will contain math. It has three parts:
 
-- **[FIXES.md](FIXES.md), the main part:** a few short rules for writing math that renders, then
-  a lookup list of what fails and what to write instead, with examples.
-- **`check.mjs`:** checks a draft by running the installed app's own renderer (its markdown code,
-  react-markdown and KaTeX) in a simulated browser (jsdom). It reports every formula that would
-  show as plain text or as a KaTeX error.
-- **A learning loop:** when the check fails, Claude looks up the fix and rewrites only the flagged
-  formulas. Once a form renders, it records both forms in `fixes.local.md` and uses the working one
-  from then on. That file is git-ignored, one per clone, and shared by every session on the
-  machine. You move entries from it into FIXES.md over time (see [Curating fixes](#curating-fixes)).
+- **Short rules** for writing math that renders, in the skill itself, so Claude follows them from
+  the first draft.
+- **A checker**, `check.mjs`, that runs the installed app's own renderer (its markdown code,
+  react-markdown and KaTeX) in a simulated browser (jsdom). Claude runs it on each reply with
+  math before sending, and it reports every formula that would show as plain text or as a KaTeX
+  error.
+- **Fixes:** when a check fails, Claude looks up the fix in [FIXES.md](FIXES.md) and rewrites
+  only the flagged formulas. It records each new fix in a `fixes.local.md` file on that machine,
+  and uses the working form from then on. You move those into FIXES.md over time (see
+  [Curating fixes](#curating-fixes)).
 
-## Using it with Claude
-
-Tell a Claude Code session on the machine, in any folder:
-
-```
-use github.com/yahya-tamur/claude-latex-check to check LaTeX before sending
-```
-
-Following [CLAUDE.md](CLAUDE.md), it:
-
-1. Clones the repo to a stable place (e.g. `~/tools/claude-latex-check`), runs `npm install`, and
-   confirms the checker works with a 3-second test. If the app isn't in a usual place, it finds
-   the app and saves the location.
-2. Offers to install it **globally, not just for that session**. It adds the short rules from
-   FIXES.md and an instruction to run the check in every session to your global
-   `~/.claude/CLAUDE.md`. That file is loaded into every turn of every Claude Code session on the
-   machine, in every folder. So after this one-time setup, every session writes math by the short
-   rules from the first draft and checks replies before sending. You don't have to mention the
-   repo again.
-
-From then on, sessions:
-- write math by the short rules;
-- check each reply that contains math;
-- on a failure, read the lookup list once, edit only the flagged formulas, and re-check;
-- record each new fix in `fixes.local.md`.
-
-They talk about this only in plain terms, like "I rewrote a formula so it renders", without
+Claude talks about this only in plain terms, like "I rewrote a formula so it renders", without
 mentioning files or tools.
+
+## Installing
+
+Needs Claude Code, Node 18+ and the Claude desktop app on the same machine. In a terminal:
+
+```bash
+claude plugin marketplace add yahya-tamur/claude-latex-check
+```
+
+```bash
+claude plugin install latex-check@latex-check
+```
+
+Or inside a Claude Code session, `/plugin marketplace add yahya-tamur/claude-latex-check` and then
+`/plugin install latex-check@latex-check`.
+
+The plugin is installed for your user, so it applies to every session in every folder. The skill's
+short description is always in context, and the rest loads only in sessions that involve math. The
+first check on a machine installs jsdom into the plugin's data folder and builds a cache, so it
+takes a bit longer than the usual 3 s.
+
+To update later:
+
+```bash
+claude plugin marketplace update latex-check
+```
+
+```bash
+claude plugin update latex-check@latex-check
+```
+
+## Where things are
+
+| File | What it is |
+|---|---|
+| [`skills/latex-check/SKILL.md`](skills/latex-check/SKILL.md) | The skill: short rules and how Claude checks and fixes replies |
+| [`FIXES.md`](FIXES.md) | Lookup of what each kind of failing span needs |
+| [`check.mjs`](check.mjs), `env.mjs` | The checker |
+| [`MAINTENANCE.md`](MAINTENANCE.md) | How to repair the checker after an app update |
+| `tests/`, `test.mjs` | One test per rule in FIXES.md, plus `tests/short-rules.md`, a sample written by the short rules that must render fully |
+| `.claude-plugin/` | Plugin and marketplace manifests |
+
+Per-machine files live in the plugin's data folder (`~/.claude/plugins/data/<id>/`), which
+survives plugin updates: `fixes.local.md`, `app-path.local` and jsdom.
 
 ## Running it yourself
 
-Needs Node 18+ and the Claude desktop app installed on the same machine.
+In a clone of this repository:
 
 ```bash
 npm install
 node check.mjs tests/short-rules.md
 ```
 
-The second command takes about 3 s and should print `ok: 17 rendered`. That file is a sample
-written strictly by the short rules, so this confirms that the checker works with your app version
-and that the short rules still produce math that renders.
+The second command takes about 3 s and should print `ok: 17 rendered`. That confirms that the
+checker works with your app version and that the short rules still produce math that renders.
 
-To check a draft:
-
-```bash
-node check.mjs reply.md
-```
-
-Text can also be piped on stdin. Only problems are printed:
+To check a draft, run `node check.mjs reply.md`, or pipe the text in on stdin. Only problems are
+printed:
 
 ```
 FAIL  shown as text: $1/r$
@@ -75,36 +85,31 @@ FAIL  shown as text: $1/r$
 ```
 
 Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. A check takes
-about 3 s, or 0.2 s for text with no math.
+about 3 s, or 0.2 s for text with no math. `--flag off` simulates the app's inline-math feature
+flag being off; then only `$$` blocks render. The default is `on`.
 
-`--flag off` simulates the app's inline-math feature flag being off; then only `$$` blocks render.
-The default is `on`.
-
-`npm test` runs all 25 cases in `tests/` (~75 s), one for every rule in FIXES.md plus the
-short-rules sample, and compares each result with what's expected. Run it after changing
-FIXES.md, the tests or `check.mjs`, or after an app update. If anything differs after an update,
-the app's math handling or its internals changed.
+`npm test` runs all 25 cases in `tests/` (~75 s) and compares each result with what's expected.
+Run it after changing FIXES.md, the short rules, the tests or `check.mjs`, or after an app update.
 
 ## Curating fixes
 
-Claude never edits FIXES.md or `tests/`, so they change only when you curate them. Every so
-often:
+Claude never edits the plugin's files, so the rules and tests change only when you curate them.
+Every so often:
 
-1. Move entries from each machine's `fixes.local.md` into FIXES.md, under "Looking up a fix".
+1. Move entries from each machine's `fixes.local.md` (in the plugin's data folder) into FIXES.md.
 2. Check the examples with `node check.mjs`.
 3. Add a `tests/*.md` case, with its expected summary in `test.mjs`.
-4. If a new rule isn't already implied by the short rules, update the short rules block, keeping
-   it short. Extend `tests/short-rules.md` to use the new rule correctly.
-5. Run `npm test`, then commit and push.
-6. On each machine, run `git pull` in its clone. If the short rules changed, the next session
-   there offers to update the copy in the global CLAUDE.md.
+4. If a new rule isn't already implied by the short rules in SKILL.md, update them, keeping them
+   short. Extend `tests/short-rules.md` to use the new rule correctly.
+5. Run `npm test` and `claude plugin validate .`, then commit and push.
+6. On each machine, update the plugin (see [Installing](#installing)).
 
 ## Platforms
 
-Install locations vary by platform, store and version, so the checker doesn't rely on a fixed
-list. It looks in this order:
+Install locations of the desktop app vary by platform, store and version, so the checker doesn't
+rely on a fixed list. It looks in this order:
 
-1. `app-path.local` in the clone (git-ignored), if it exists. When the app isn't found, Claude
+1. `app-path.local` in the plugin's data folder, if it exists. When the app isn't found, Claude
    finds the folder containing `ion-dist` or `ion-dist.asar` and saves its path here, with `*` in
    place of the version number, e.g. `C:\Program Files\Claude_*\app\resources`. When several
    folders match, the most recently modified one is used, so the saved path survives updates.
@@ -113,15 +118,15 @@ list. It looks in this order:
 
 `CLAUDE_DESKTOP_RESOURCES` overrides both.
 
-The first run for each app version copies and patches the bundle into a cache, and removes copies
-for older versions. Newer app builds pack the bundle into `ion-dist.asar`, which is unpacked once
+The first run for each app version copies and patches the app's code into a cache, and removes
+copies for older versions. Newer app builds pack it into `ion-dist.asar`, which is unpacked once
 first. Expect a few hundred MB. Cache locations: `~/.cache/claude-latex-check` (Linux, or
 `$XDG_CACHE_HOME`), `~/Library/Caches/claude-latex-check` (macOS),
 `%LOCALAPPDATA%\claude-latex-check` (Windows). Override with `LATEX_CHECK_CACHE`.
 
 ## How it works
 
-The bundle's file names and minified function names change with every build, so `check.mjs` finds
+The app's file names and minified function names change with every build, so `check.mjs` finds
 files by content markers and functions by what their code does. It patches three things in the
 copy:
 

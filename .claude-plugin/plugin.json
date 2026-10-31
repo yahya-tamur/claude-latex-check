@@ -1,0 +1,10 @@
+{
+  "name": "latex-check",
+  "displayName": "LaTeX check",
+  "description": "Write LaTeX math that renders in the Claude desktop app's Code tab, and check replies with the app's own renderer before sending",
+  "author": {
+    "name": "yahya-tamur"
+  },
+  "repository": "https://github.com/yahya-tamur/claude-latex-check",
+  "keywords": ["latex", "math", "katex", "rendering"]
+}

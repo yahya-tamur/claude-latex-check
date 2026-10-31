@@ -1,15 +1,19 @@
 // Check that LaTeX in a markdown reply renders as math in the Claude desktop app's Code tab.
 //
-// Runs the app's own transcript renderer (installed bundle under /usr/lib/claude-desktop) in jsdom:
+// Runs the installed desktop app's own transcript renderer in jsdom:
 // the same markdown hook + react-markdown + KaTeX the Code tab uses. Prints only problems: every
 // $...$, $$...$$, \(...\) or \[...\] left as plain text, and every KaTeX error.
 //
-// usage: node check.mjs [--flag on|off] [file.md]        (reads stdin when no file)
+// usage: node check.mjs [--flag on|off] [--data <folder>] [file.md]   (reads stdin when no file)
+//   --data  folder for per-machine state; the plugin passes ${CLAUDE_PLUGIN_DATA}. Default: next to
+//           this script.
+//   --show-fixes, --add-fix "<text>", --set-app-path "<path>": print or append to fixes.local.md,
+//           or save the app location, in the data folder, then exit.
 //   --flag  state of the app's inline-math feature flag. Default "on" (single-$ math renders in
 //           the Code tab). "off" = only $$ blocks render.
 // exit 0 = everything rendered, 1 = something didn't, 2 = harness broke (app not found or changed).
 //
-// Finding the app: the path in app-path.local next to this script (the resources folder, the one
+// Finding the app: the path in app-path.local in the data folder (the resources folder, the one
 // containing ion-dist or ion-dist.asar), else a few common install locations.
 //
 // Environment overrides:
@@ -24,6 +28,8 @@ import { createHash } from 'crypto';
 import { homedir } from 'os';
 import { join, dirname } from 'path';
 import { pathToFileURL, fileURLToPath } from 'url';
+import { createRequire } from 'module';
+import { spawnSync } from 'child_process';
 
 const die = msg => { console.error(`claude-latex-check harness error: ${String(msg).slice(0, 500)}`); process.exit(2); };
 // Any crash is the harness's fault, not the reply's: keep it out of exit code 1.
@@ -75,7 +81,40 @@ function unpackAsar(archive) {
 // Where the app is installed varies by platform, store and version. A location found once is saved
 // in app-path.local next to this script (git-ignored), with `*` in place of version numbers so it
 // survives updates; after that come a few common guesses.
-const savedPath = join(dirname(fileURLToPath(import.meta.url)), 'app-path.local');
+const args = process.argv.slice(2);
+let flag = 'on', file, dataDir;
+let showFixes = false, addFix, setAppPath;
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--flag') flag = args[++i];
+  else if (args[i] === '--data') dataDir = args[++i];
+  else if (args[i] === '--show-fixes') showFixes = true;
+  else if (args[i] === '--add-fix') addFix = args[++i];
+  else if (args[i] === '--set-app-path') setAppPath = args[++i];
+  else file = args[i];
+}
+// Per-machine state (app-path.local, and jsdom when this isn't a dev checkout) lives in the data
+// folder: the plugin passes ${CLAUDE_PLUGIN_DATA}, which survives plugin updates.
+const here = dirname(fileURLToPath(import.meta.url));
+dataDir ||= here;
+const savedPath = join(dataDir, 'app-path.local');
+
+// State commands, so Claude never has to touch the data folder directly (it sits under ~/.claude,
+// where file edits need approval): print or add local fixes, save the app location.
+const fixesPath = join(dataDir, 'fixes.local.md');
+if (showFixes || addFix !== undefined || setAppPath !== undefined) {
+  mkdirSync(dataDir, { recursive: true });
+  if (addFix !== undefined) {
+    if (!existsSync(fixesPath)) writeFileSync(fixesPath, '# LaTeX fixes found on this machine\n\n');
+    writeFileSync(fixesPath, readFileSync(fixesPath, 'utf8') + `- ${addFix.trim()}\n`);
+    console.log(`saved to ${fixesPath}`);
+  }
+  if (setAppPath !== undefined) {
+    writeFileSync(savedPath, setAppPath.trim() + '\n');
+    console.log(`saved app location ${setAppPath.trim()}`);
+  }
+  if (showFixes) console.log(existsSync(fixesPath) ? readFileSync(fixesPath, 'utf8').trim() : 'no local fixes yet');
+  process.exit(0);
+}
 // Expand `*` in path segments; most recently modified first when several match (the newest
 // install), with the name as a tiebreaker.
 function expand(p) {
@@ -118,9 +157,6 @@ const cacheRoot = env.LATEX_CHECK_CACHE ?? {
   darwin: join(home, 'Library', 'Caches', 'claude-latex-check'),
 }[process.platform] ?? join(env.XDG_CACHE_HOME ?? join(home, '.cache'), 'claude-latex-check');
 
-const args = process.argv.slice(2);
-let flag = 'on', file;
-for (let i = 0; i < args.length; i++) args[i] === '--flag' ? (flag = args[++i]) : (file = args[i]);
 if (flag !== 'on' && flag !== 'off') die(`--flag must be on or off, got ${flag}`);
 const text = readFileSync(file ?? 0, 'utf8');
 
@@ -192,7 +228,20 @@ if (!existsSync(join(dir, '.ok'))) {
   writeFileSync(join(dir, '.ok'), '');
 }
 
-await import('./env.mjs');
+// jsdom: the repo's own node_modules in a dev checkout, else the data folder (installed there once).
+function loadJsdom() {
+  try { return createRequire(import.meta.url)('jsdom'); } catch {}
+  const req = createRequire(join(dataDir, 'package.json'));
+  try { return req('jsdom'); } catch {}
+  mkdirSync(dataDir, { recursive: true });
+  console.error('claude-latex-check: installing jsdom into the data folder (one time)...');
+  const r = spawnSync('npm', ['install', '--prefix', dataDir, '--no-audit', '--no-fund', '--silent', 'jsdom@24.1.3'],
+    { stdio: ['ignore', 'ignore', 'inherit'], shell: process.platform === 'win32' });
+  if (r.status !== 0) die(`couldn't install jsdom into ${dataDir} (npm exit ${r.status})`);
+  return req('jsdom');
+}
+const { setupBrowser } = await import('./env.mjs');
+setupBrowser(loadJsdom().JSDOM);
 const quiet = console.log;
 console.log = console.warn = console.info = console.debug = () => {};
 // [exportName, fn] pairs of a bundle file.

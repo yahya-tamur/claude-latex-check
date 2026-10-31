@@ -1,23 +1,8 @@
-# Writing math that renders
+# Fixing math that doesn't render
 
-The app only treats a span as math when it looks like a formula. These rules come from real
-failures; each has a case in `tests/`.
-
-## Short rules
-
-Copied into the global CLAUDE.md, markers included.
-
-<!-- short-rules:start -->
-Math formatting for the Claude desktop app (inline math renders only if it looks like a formula):
-- Use `$...$` inline and `$$...$$` only as its own paragraph. Never use `\(...\)` or `\[...\]`.
-- Inline spans: at most 60 characters, on one line, not starting with a digit, `(` or `[`, not
-  ending with an operator.
-- Every inline span other than a single letter or `f(x)` needs a `\command` or one of
-  `= + - < > ^ _`. Plain letters like `$xy$` or `$AB/B$` stay text.
-- Brace every subscript and superscript: `x_{i}`, `x^{2}`, `x'^{n}`.
-- Put a space before each opening `$`, and a space or `.,;:!?)` after each closing `$`. Never a
-  straight quote or hyphen touching a `$`: use “curly quotes” or a non-breaking hyphen (U+2011).
-<!-- short-rules:end -->
+The app only treats a span as math when it looks like a formula. The short rules for writing math
+are in `skills/latex-check/SKILL.md`; this file is the lookup for when the checker flags a span.
+Each entry comes from a real failure and has a case in `tests/`.
 
 ## Looking up a fix
 
