@@ -5,6 +5,10 @@ export function setupBrowser(JSDOM) {
   const w = dom.window;
   w.matchMedia = () => ({ matches:false, addEventListener(){}, removeEventListener(){}, addListener(){}, removeListener(){} });
   for (const k of Object.getOwnPropertyNames(w)) if (!(k in globalThis)) try { globalThis[k] = w[k]; } catch {}
+  // Newer Node has its own experimental Web Storage globals, which warn when touched and don't
+  // act like a browser's: use jsdom's.
+  for (const k of ['localStorage', 'sessionStorage'])
+    Object.defineProperty(globalThis, k, { value: w[k], configurable: true, writable: true });
   globalThis.window = w; globalThis.self = w;
   w.performance.getEntriesByName ??= () => [];
 }
