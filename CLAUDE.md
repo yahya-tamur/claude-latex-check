@@ -6,13 +6,17 @@ Read only this part unless the checker exits 2 or the user reports a rendering p
 
 1. Clone once to a stable place and reuse it in later sessions (e.g. `~/tools/claude-latex-check`),
    then `npm install` there. Node 18+ and the Claude desktop app must be on the same machine.
-   Optionally run `npm test` once (~1 minute, prints one line).
+   Optionally run `npm test` once (~70 s, prints one line).
 2. Before writing any math, read `<repo>/FIXES.md` (the rules for what renders) and
    `<repo>/fixes.local.md` if it exists. Use those forms from the start.
 3. For every reply containing LaTeX: write the reply's markdown, exactly as it will be sent, to a
    temp file and run `node <repo>/check.mjs <file>`. Fix each `FAIL` line, re-run, then send.
 4. Exit 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. On 2, send the
    reply anyway, tell the user the math wasn't checked, and see "When it breaks" below.
+
+Talking to the user: keep all of this behind the scenes. Plain wording like "I rewrote a formula
+so it renders" or "I couldn't check the math rendering this time" is fine. Don't name FIXES.md,
+`fixes.local.md`, `check.mjs`, exit codes or the rules unless the user asks how it works.
 
 Learn from every failure. Each fail-and-retry round costs a re-run and a rewrite, so don't hit the
 same failure twice:

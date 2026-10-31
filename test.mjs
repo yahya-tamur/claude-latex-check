@@ -27,6 +27,13 @@ const expected = {
   '17-quote-adjacent.md': '1 failed, 1 rendered',      // $k$" fails
   // "$f$, -$x$, /$y$, :$z$ fail; reworded and curly-quoted forms render
   '18-quote-before.md': '4 failed, 3 rendered',
+  // $(x_i)$, $(f)(x) = x a - a$, $(A_{B})$ fail; \command, ^, a plain list or no leading ( render
+  '19-paren-start.md': '3 failed, 7 rendered',
+  '20-plain-letters.md': '2 failed, 3 rendered',       // $xY$, $AB/B$ fail
+  '21-uppercase-subscript.md': '1 failed, 3 rendered', // $A_B$ fails; $A_{B}$ renders
+  '22-prime-superscript.md': '1 failed, 3 rendered',   // $x'^n$ fails; $x'^{n}$ renders
+  '23-bracket-colon.md': '2 failed, 2 rendered',       // $[A:B]$ fails; $[A \colon B]$ renders
+  '24-hyphen-before.md': '1 failed, 1 rendered',       // word-$k$ fails; U+2011 hyphen renders
 };
 
 let bad = 0;
