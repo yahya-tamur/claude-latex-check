@@ -46,8 +46,7 @@ From then on, sessions:
 - record each new fix in `fixes.local.md`.
 
 They talk about this only in plain terms, like "I rewrote a formula so it renders", without
-mentioning files or tools. When you update the short rules in FIXES.md, the next session on each
-machine offers to update its global copy.
+mentioning files or tools.
 
 ## Running it yourself
 
@@ -55,18 +54,12 @@ Needs Node 18+ and the Claude desktop app installed on the same machine.
 
 ```bash
 npm install
-npm test
-```
-
-`npm test` runs all of `tests/*.md` (25 cases, ~75 s) and compares each result with what's
-expected. There's a case for every rule in FIXES.md, plus `tests/short-rules.md`, a sample written
-strictly by the short rules that must render fully. If anything differs after an app update, the
-app's math handling or its internals changed. For a quick check that the checker works and the
-short rules still hold, run just that sample (about 3 s):
-
-```bash
 node check.mjs tests/short-rules.md
 ```
+
+The second command takes about 3 s and should print `ok: 17 rendered`. That file is a sample
+written strictly by the short rules, so this confirms that the checker works with your app version
+and that the short rules still produce math that renders.
 
 To check a draft:
 
@@ -87,17 +80,24 @@ about 3 s, or 0.2 s for text with no math.
 `--flag off` simulates the app's inline-math feature flag being off; then only `$$` blocks render.
 The default is `on`.
 
+`npm test` runs all 25 cases in `tests/` (~75 s), one for every rule in FIXES.md plus the
+short-rules sample, and compares each result with what's expected. Run it after changing
+FIXES.md, the tests or `check.mjs`, or after an app update. If anything differs after an update,
+the app's math handling or its internals changed.
+
 ## Curating fixes
 
 Claude never edits FIXES.md or `tests/`, so they change only when you curate them. Every so
-often, for each machine:
+often:
 
-1. Move entries from that clone's `fixes.local.md` into FIXES.md, under "Looking up a fix".
+1. Move entries from each machine's `fixes.local.md` into FIXES.md, under "Looking up a fix".
 2. Check the examples with `node check.mjs`.
 3. Add a `tests/*.md` case, with its expected summary in `test.mjs`.
 4. If a new rule isn't already implied by the short rules, update the short rules block, keeping
    it short. Extend `tests/short-rules.md` to use the new rule correctly.
-5. Run `npm test`.
+5. Run `npm test`, then commit and push.
+6. On each machine, run `git pull` in its clone. If the short rules changed, the next session
+   there offers to update the copy in the global CLAUDE.md.
 
 ## Platforms
 

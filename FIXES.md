@@ -21,7 +21,9 @@ Math formatting for the Claude desktop app (inline math renders only if it looks
 
 ## Looking up a fix
 
-Find what the flagged span looks like, then rewrite just that span.
+Find what the flagged span looks like, then rewrite just that span. These fixes show what
+actually renders, and some go beyond the stricter short rules (e.g. a span starting with `(`).
+When there's a choice, prefer a form that also follows the short rules.
 
 - **Over 60 characters:** split it into shorter spans joined by words, or move it to a `$$`
   paragraph.

@@ -12,11 +12,11 @@ Read only this part unless the checker exits 2 or the user reports a rendering p
      works with this app version and that the short rules still produce math that renders. Don't
      run the full `npm test` here; it takes over a minute and is for maintenance.
    - If the checker says it can't find the app, find the app's resources folder yourself (the one
-     containing `ion-dist` or `ion-dist.asar`; it varies by platform, store and version). Save its
-     path in `<repo>/app-path.local` with `*` in place of the version number, because the folder name
-     changes with every update. For example: `C:\Program Files\Claude_*\app\resources`. When
-     several folders match, the most recently modified one is used. If it stops being found after
-     an update, find it again the same way.
+     containing `ion-dist` or `ion-dist.asar`; it varies by platform, store and version). Save
+     its path in `<repo>/app-path.local` with `*` in place of the version number, because the
+     folder name changes with every update. For example: `C:\Program Files\Claude_*\app\resources`.
+     When several folders match, the most recently modified one is used. If it stops being found
+     after an update, find it again the same way.
    - Offer to add two things to the user's global `~/.claude/CLAUDE.md`, which is loaded into every
      turn of every session in every folder. First, the block between the `short-rules` markers at
      the top of `<repo>/FIXES.md`, markers included. Second, outside the markers, an instruction to
@@ -60,8 +60,8 @@ same failure twice:
   those.
 
 Keeping token use low:
-- Run the checker once per finished draft, not per formula. Output is already minimal: only
-  failures plus a summary line. A reply without math costs 0.2 s and prints `ok: no math`.
+- Run the checker once per finished draft, not per formula. Each run takes about 3 s, or 0.2 s
+  for a reply without math, and prints only failures plus a summary line.
 - Don't read `check.mjs`, the tests or the app bundle during normal use.
 - Plain dollar amounts like "$5 and $10" are reported as failures; that's a known false positive.
   Ignore it.
@@ -81,7 +81,7 @@ minified identifiers change every build, so everything is found by content. What
 | What | Found by | Used for |
 |---|---|---|
 | Code-tab markdown hook file | contains `guardedInline:` | decides if math is on, returns `{remarkPlugins, rehypePlugins}` |
-| inline-math flag function | `x=<fn>(),{display:` inside that hook | patched to return true/false |
+| inline-math flag function | the no-argument function whose result reaches the function returning `{display, guardedInline}` (older builds: `x=<fn>(),{display:`) | patched to return true/false |
 | chunk preloader | `=function(e,t,n){let r=globalThis.__antChunkLoadCtx` | export replaced with `f=>f()` (jsdom never fires `<link>` load events, so it hangs) |
 | feature-flag service | `throw …Error("Missing or invalid GrowthBookProvider")` | patched to answer "unknown flag" |
 | React | contains `e.createRoot=function`; `createRoot` has `(299)`; `jsx` is found by test-calling | rendering |
@@ -96,21 +96,23 @@ A unique match can still be the wrong thing, so a match alone isn't trusted:
   exactly the expected math renders.
 
 Simulated wrong-but-unique matches at each step all exit 2. What these checks can't catch: the app
-keeping this pipeline but drawing the Code tab with a different one. Only `npm test` against what
-the user sees in the real app catches that.
+keeping this pipeline but drawing the Code tab with a different one. Only comparing with what the
+user sees in the real app catches that.
 
 Fixing, cheaply:
 - Bundle: `<resources>/ion-dist/assets/v1/` (Linux `/usr/lib/claude-desktop/resources`). Newer
   builds ship `ion-dist.asar` instead; `check.mjs` unpacks it to `<cache>/asar-<hash>/ion-dist/`,
-  so grep there. It has thousands of minified `.js` files, with single lines up to ~500 KB.
-  Never print whole files or lines: use
-  `grep -l` to find files and `grep -oE '.{0,200}MARKER.{0,200}'` to see context. Pipe node errors
-  through `cut -c1-300 | head`, because stack traces echo minified source lines.
+  so grep there. It has thousands of minified `.js` files, with single lines up to ~500 KB. Never
+  print whole files or lines: use `grep -l` to find files and `grep -oE '.{0,200}MARKER.{0,200}'`
+  to see context. Pipe node errors through `cut -c1-300 | head`, because stack traces echo
+  minified source lines.
 - Re-find the moved piece by searching for stable strings: `singleDollarTextMath`, `inlineGuard:`,
   `rehypePlugins:`, `katex`, `remarkMath`. The Code tab's transcript component calls
   `hook(text, "chat", true, smartQuotes)` and passes the result to react-markdown.
 - Trap: there are several markdown renderers. `ChatMarkdown` (claude.ai chat view, custom parser)
   isn't the Code tab's. Make sure you're using the one the Code tab transcript uses.
+- Don't try to read the real value of the app's inline-math feature flag; it can't be read without
+  the user's account data. The checker assumes "on", which matched what the user saw.
 - Update the marker or pattern in `check.mjs`, then run `npm test`. If an expected summary changes,
   the app's math rules may really have changed. Ask the user to send the test text in the app and
   look before you change any expectation.
@@ -121,20 +123,3 @@ If it can't be patched, rewrite it. Keep the same contract so callers don't chan
 - Last line: `N failed, M rendered`, `ok: M rendered` or `ok: no math`.
 - Exit codes 0 / 1 / 2.
 - It must run the app's own renderer. A reimplementation of its rules drifts from the app silently.
-
-## History (condensed)
-
-- Problem: the app's renderer guesses which `$...$` is math, so valid TeX sometimes shows as text.
-  The user wanted every reply with math checked against "the app's own parser".
-- An earlier tool imported the chat parser plus its math guards and checked line by line. It missed
-  mid-sentence `$$`, KaTeX syntax errors and `$...$` split across lines, and it used the claude.ai
-  chat parser, not the Code tab's. It was replaced by this full render in jsdom.
-- The inline-math flag's real value can't be read without the user's account data. Don't try.
-  "on" matched what the user saw (only `$1/r$` failed in a reply with 15 formulas).
-- A rejected `\(x\)` renders as plain `(x)`, leaving no `$` or backslash to find. The checker counts
-  `(body)` occurrences against the source instead.
-- Install locations vary by platform, store and version (the Microsoft Store build is under
-  `C:\Program Files\Claude_<version>\app\resources`), too many to list. So the checker tries a few
-  common ones, and Claude finds the rest and saves them in `app-path.local` with `*` for the version.
-- Known costs: ~3 s per check (it scans the bundle for markers and renders the canary each run).
-  The once-per-version copy (~150 MB) and wiring check add no noticeable time.
