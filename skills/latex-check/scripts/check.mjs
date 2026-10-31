@@ -26,7 +26,7 @@ import { readFileSync, existsSync, mkdirSync, cpSync, writeFileSync, readdirSync
   closeSync, statSync, renameSync, readlinkSync } from 'fs';
 import { createHash } from 'crypto';
 import { homedir } from 'os';
-import { join, dirname } from 'path';
+import { join, dirname, relative } from 'path';
 import { pathToFileURL, fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { spawnSync, execFileSync } from 'child_process';
@@ -39,9 +39,11 @@ process.on('unhandledRejection', e => die(e?.stack ?? e));
 const home = homedir(), env = process.env;
 const ls = d => { try { return readdirSync(d); } catch { return []; } };
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// Files the checker never loads: icons, images, fonts and stylesheets. It inspects the rendered
-// HTML, not how it looks.
-const unused = /\.(svg|png|webp|jpe?g|gif|ico|woff2?|ttf|otf|eot|css)$/i;
+// Files the checker never loads, by path inside the bundle: icons, images, fonts and stylesheets
+// (it inspects the rendered HTML, not how it looks), and the translations, sounds and wasm. The
+// app requests those by absolute URL ("/i18n/...", "/assets/v1/x.wasm"), which resolves against
+// the claude.ai page URL or the filesystem root here, never this copy.
+const unused = /(^|[\\/])i18n([\\/]|$)|\.(svg|png|webp|jpe?g|gif|ico|woff2?|ttf|otf|eot|css|mp3|wasm)$/i;
 
 // Newer builds pack ion-dist into ion-dist.asar: unpack it, minus unused files, into out.
 function unpackAsar(archive, out) {
@@ -56,8 +58,9 @@ function unpackAsar(archive, out) {
     mkdirSync(join(out, rel), { recursive: true });
     for (const [name, e] of Object.entries(node.files)) {
       const r = join(rel, name);
+      if (unused.test(r)) continue;
       if (e.files) walk(e, r);
-      else if (e.link || unused.test(name)) continue;
+      else if (e.link) continue;
       else if (e.unpacked) cpSync(join(`${archive}.unpacked`, r), join(out, r));
       else {
         const buf = Buffer.alloc(e.size);
@@ -175,7 +178,7 @@ if (fresh) {
   // Copies for older app versions are dead weight (~150 MB each).
   for (const d of ls(cacheRoot)) rmSync(join(cacheRoot, d), { recursive: true, force: true });
   if (app.asar) unpackAsar(app.asar, buildDir);
-  else cpSync(app.copy, join(buildDir, 'ion-dist'), { recursive: true, filter: f => !unused.test(f) });
+  else cpSync(app.copy, join(buildDir, 'ion-dist'), { recursive: true, filter: f => !unused.test(relative(app.copy, f)) });
 }
 let dir = assetsIn(join(buildDir, 'ion-dist')) ?? die(`no app bundle in ${app.asar ?? app.copy}`);
 const jsFiles = readdirSync(dir).filter(f => f.endsWith('.js'));

@@ -114,8 +114,9 @@ rely on a fixed list. It looks in this order:
 instead.
 
 The first run for each app version copies the app's code into a cache, unpacking it from
-`ion-dist.asar` in newer builds, and patches it. It leaves out icons, fonts and stylesheets, which
-the checker never loads, and removes the copy for the previous version. Expect about 190 MB.
+`ion-dist.asar` in newer builds, and patches it. It leaves out icons, fonts, stylesheets,
+translations, sounds and wasm, which the checker never loads, and removes the copy for the
+previous version. Expect about 140 MB.
 Cache locations: `~/.cache/claude-latex-check` (Linux, or `$XDG_CACHE_HOME`),
 `~/Library/Caches/claude-latex-check` (macOS), `%LOCALAPPDATA%\claude-latex-check` (Windows).
 Override with `LATEX_CHECK_CACHE`.
