@@ -1,6 +1,15 @@
 # claude-latex-check
 
-A Claude Code plugin that makes LaTeX math render in the Claude desktop app's Code tab.
+A Claude Code plugin that makes LaTeX math render in the Claude desktop app's Code tab. To install,
+run these in a terminal (details under [Installing](#installing)):
+
+```bash
+claude plugin marketplace add yahya-tamur/claude-latex-check
+```
+
+```bash
+claude plugin install latex-check@latex-check
+```
 
 The app guesses which spans are math, so valid TeX can still show as plain text, for example
 `$1/r$`, `$a \cdot b -$` or any inline span over 60 characters. The plugin has one skill,
@@ -40,11 +49,7 @@ short description is always in context, and the rest loads only in sessions that
 first check on a machine installs jsdom into the plugin's data folder and builds a cache, so it
 takes a bit longer than the usual 3 s.
 
-To update later:
-
-```bash
-claude plugin marketplace update latex-check
-```
+To update later (this also refreshes the marketplace):
 
 ```bash
 claude plugin update latex-check@latex-check
