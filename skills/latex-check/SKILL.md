@@ -54,22 +54,16 @@ Rewrite just that span:
    - Use "If a span is flagged" above, and the local fixes.
    - Edit each flagged span in the temp file in place. Don't regenerate the reply.
    - Re-run the checker on the edited file, then send that text.
-3. On exit 2, send the reply anyway, written by the rules, and handle it like this:
-   - If the message says the app wasn't found, find the app's resources folder (the one containing
-     `ion-dist` or `ion-dist.asar`; it varies by platform, store and version). Save it with
-     `node "${CLAUDE_SKILL_DIR}/scripts/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --set-app-path "<path>"`.
-     The checker replaces version numbers in folder names with `*` itself, so the location keeps
-     working after updates.
-   - Otherwise, an app update has probably broken the checker. For the rest of the session, check
-     replies with the rules lint instead, which needs no app and also catches KaTeX errors:
-     `node "${CLAUDE_SKILL_DIR}/scripts/lint.mjs" <file>`
-     Fix flagged spans the same way. It's stricter than the app, so it may flag formulas that would
-     render. Tell the user once that the full check isn't working, and suggest
-     `claude plugin update latex-check@latex-check`, since a fix may already be published. If it
-     still fails after updating, suggest reporting it at
-     https://github.com/yahya-tamur/claude-latex-check/issues with the error message. If the user
-     wants to repair it themselves, `${CLAUDE_PLUGIN_ROOT}/MAINTENANCE.md` lists what the checker relies
-     on in the app.
+3. On exit 2, for the rest of the session check replies with the rules lint instead, which needs
+   no app and also catches KaTeX errors:
+   `node "${CLAUDE_SKILL_DIR}/scripts/lint.mjs" <file>`
+   Fix flagged spans the same way. It's stricter than the app, so it may flag formulas that would
+   render. If the app was found but the checker still failed, an app update has probably broken
+   it: tell the user once that the full check isn't working, and suggest updating the plugin,
+   since a fix may already be published. If it still fails after updating, suggest reporting it at
+   https://github.com/yahya-tamur/claude-latex-check/issues with the error message. If the user
+   wants to repair it themselves, `${CLAUDE_PLUGIN_ROOT}/MAINTENANCE.md` lists what the checker
+   relies on in the app. If the app wasn't found, just use the lint without mentioning it.
 
 Plain dollar amounts like "$5 and $10" are reported as failures. That's a known false positive;
 ignore it. Don't read `check.mjs`, the tests or the app's files during normal use.

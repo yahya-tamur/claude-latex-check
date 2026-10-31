@@ -7,29 +7,29 @@
 // usage: node check.mjs [--flag on|off] [--data <folder>] [file.md]   (reads stdin when no file)
 //   --data  folder for per-machine state; the plugin passes ${CLAUDE_PLUGIN_DATA}. Default: next to
 //           this script.
-//   --show-fixes, --add-fix "<text>", --set-app-path "<path>": print or append to fixes.local.md,
-//           or save the app location, in the data folder, then exit.
+//   --show-fixes, --add-fix "<text>": print or append to fixes.local.md in the data folder, then
+//           exit.
 //   --flag  state of the app's inline-math feature flag. Default "on" (single-$ math renders in
 //           the Code tab). "off" = only $$ blocks render.
 // exit 0 = everything rendered, 1 = something didn't, 2 = harness broke (app not found or changed).
 //
-// Finding the app: the path in app-path.local in the data folder (the resources folder, the one
-// containing ion-dist or ion-dist.asar), else a few common install locations.
+// Finding the app: the running desktop app's resources folder (the one containing ion-dist or
+// ion-dist.asar), else a few common install locations.
 //
 // Environment overrides:
-//   CLAUDE_DESKTOP_RESOURCES  the app's resources folder, ahead of app-path.local
+//   CLAUDE_DESKTOP_RESOURCES  the app's resources folder, ahead of everything else
 //   LATEX_CHECK_CACHE         where the patched bundle copy is kept
 //
 // Bundle file names and minified export names change between app versions, so modules are found
 // by what they contain and exports by what their code does.
 import { readFileSync, existsSync, mkdirSync, cpSync, writeFileSync, readdirSync, rmSync, openSync, readSync,
-  closeSync, statSync, renameSync } from 'fs';
+  closeSync, statSync, renameSync, readlinkSync } from 'fs';
 import { createHash } from 'crypto';
 import { homedir } from 'os';
 import { join, dirname } from 'path';
 import { pathToFileURL, fileURLToPath } from 'url';
 import { createRequire } from 'module';
-import { spawnSync } from 'child_process';
+import { spawnSync, execFileSync } from 'child_process';
 
 const die = msg => { console.error(`claude-latex-check harness error: ${String(msg).slice(0, 500)}`); process.exit(2); };
 // Any crash is the harness's fault, not the reply's: keep it out of exit code 1.
@@ -77,72 +77,62 @@ function unpackAsar(archive) {
   return out;
 }
 
-// The app's web UI bundle: <resources>/ion-dist/assets/<v>/ holding the .js chunks.
-// Where the app is installed varies by platform, store and version. A location found once is saved
-// in app-path.local in the data folder and generalized by generalize() below, so it follows
-// updates; after that come a few common guesses.
 const args = process.argv.slice(2);
 let flag = 'on', file, dataDir;
-let showFixes = false, addFix, setAppPath, surface = 'code';
+let showFixes = false, addFix, surface = 'code';
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--flag') flag = args[++i];
   else if (args[i] === '--data') dataDir = args[++i];
   else if (args[i] === '--surface') surface = args[++i];
   else if (args[i] === '--show-fixes') showFixes = true;
   else if (args[i] === '--add-fix') addFix = args[++i];
-  else if (args[i] === '--set-app-path') setAppPath = args[++i];
   else file = args[i];
 }
-// Per-machine state (app-path.local, and jsdom when this isn't a dev checkout) lives in the data
+// Per-machine state (fixes.local.md, and jsdom when this isn't a dev checkout) lives in the data
 // folder: the plugin passes ${CLAUDE_PLUGIN_DATA}, which survives plugin updates.
 const here = dirname(fileURLToPath(import.meta.url));
 dataDir ||= here;
-const savedPath = join(dataDir, 'app-path.local');
 
 // State commands, so Claude never has to touch the data folder directly (it sits under ~/.claude,
-// where file edits need approval): print or add local fixes, save the app location.
+// where file edits need approval): print or add local fixes.
 const fixesPath = join(dataDir, 'fixes.local.md');
-if (showFixes || addFix !== undefined || setAppPath !== undefined) {
+if (showFixes || addFix !== undefined) {
   mkdirSync(dataDir, { recursive: true });
   if (addFix !== undefined) {
     if (!existsSync(fixesPath)) writeFileSync(fixesPath, '# LaTeX fixes found on this machine\n\n');
     writeFileSync(fixesPath, readFileSync(fixesPath, 'utf8') + `- ${addFix.trim()}\n`);
     console.log(`saved to ${fixesPath}`);
   }
-  if (setAppPath !== undefined) {
-    const pattern = generalize(setAppPath.trim());
-    writeFileSync(savedPath, pattern + '\n');
-    console.log(`saved app location ${pattern}`);
-  }
   if (showFixes) console.log(existsSync(fixesPath) ? readFileSync(fixesPath, 'utf8').trim() : 'no local fixes yet');
   process.exit(0);
 }
-// Expand `*` in path segments; most recently modified first when several match (the newest
-// install), with the name as a tiebreaker.
-// Folder names that carry a version (and often more after it, like an architecture or a hash that
-// changes per release) are cut at the version or at an existing `*`, so `Claude_1.2.3.0_x64__abc`
-// and `Claude_*_x64__abc` both become `Claude_*`. A match still has to contain the app's bundle.
-function generalize(p) {
-  return p.split(/([\\/]+)/).map((seg, i) =>
-    i % 2 ? seg : seg.replace(/^(.*?)(?:\*|\d+\.\d+).*$/, '$1*')).join('');
-}
-function expand(p) {
-  const root = p.match(/^([A-Za-z]:[\\/]|[\\/]+)/)?.[0] ?? '';
-  const mtime = h => { try { return statSync(h).mtimeMs; } catch { return 0; } };
-  // Each hit carries the modification time of the folder its last `*` matched.
-  let hits = [{ path: root || '.', time: 0 }];
-  for (const seg of p.slice(root.length).split(/[\\/]+/).filter(Boolean)) {
-    if (!seg.includes('*')) { hits = hits.map(h => ({ ...h, path: join(h.path, seg) })); continue; }
-    const re = new RegExp(`^${seg.split('*').map(escapeRe).join('.*')}$`);
-    hits = hits.flatMap(h => ls(h.path).filter(d => re.test(d))
-      .map(d => ({ path: join(h.path, d), time: mtime(join(h.path, d)) })));
-  }
-  return hits.sort((a, b) => b.time - a.time || b.path.localeCompare(a.path, undefined, { numeric: true }))
-    .map(h => h.path);
+// The resources folder of the running desktop app, next to its executable. The app runs whenever
+// the Code tab is in use, and its path is always the current version. Claude Code's own CLI is also
+// called claude, but has no resources folder; appAssets() skips folders without the app's code.
+function runningApp() {
+  try {
+    if (process.platform === 'linux') {
+      return readdirSync('/proc').filter(d => /^\d+$/.test(d)).flatMap(pid => {
+        try { const exe = readlinkSync(`/proc/${pid}/exe`); return /claude/i.test(exe) ? [join(dirname(exe), 'resources')] : []; }
+        catch { return []; }
+      });
+    }
+    if (process.platform === 'darwin') {
+      return execFileSync('ps', ['-axo', 'comm='], { encoding: 'utf8', timeout: 5000 }).split('\n')
+        .map(l => l.match(/^(.*\.app)\/Contents\/MacOS\//)?.[1]).filter(a => a && /claude/i.test(a))
+        .map(a => join(a, 'Contents', 'Resources'));
+    }
+    if (process.platform === 'win32') {
+      return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        'Get-Process -Name Claude -ErrorAction SilentlyContinue | ForEach-Object { $_.Path }'],
+        { encoding: 'utf8', timeout: 10000 }).split(/\r?\n/).filter(Boolean).map(p => join(dirname(p), 'resources'));
+    }
+  } catch {}
+  return [];
 }
 function appAssets() {
-  const saved = existsSync(savedPath) ? expand(generalize(readFileSync(savedPath, 'utf8').trim())) : [];
-  const resources = env.CLAUDE_DESKTOP_RESOURCES ? [env.CLAUDE_DESKTOP_RESOURCES] : [...saved, ...{
+  // The app's web UI bundle: <resources>/ion-dist/assets/<v>/ holding the .js chunks.
+  const found = env.CLAUDE_DESKTOP_RESOURCES ? [env.CLAUDE_DESKTOP_RESOURCES] : [...runningApp(), ...{
     linux: ['/usr/lib/claude-desktop/resources', '/opt/Claude/resources', '/opt/claude-desktop/resources',
       '/usr/lib/claude/resources'],
     darwin: ['/Applications/Claude.app/Contents/Resources', join(home, 'Applications/Claude.app/Contents/Resources')],
@@ -152,14 +142,14 @@ function appAssets() {
       .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
       .map(d => join(env.LOCALAPPDATA ?? join(home, 'AppData', 'Local'), 'AnthropicClaude', d, 'resources')),
   }[process.platform] ?? []];
+  const resources = [...new Set(found)];
   for (const r of resources) {
     const packed = !existsSync(join(r, 'ion-dist')) && existsSync(join(r, 'ion-dist.asar'));
     const assets = join(packed ? unpackAsar(join(r, 'ion-dist.asar')) : join(r, 'ion-dist'), 'assets');
     const v = ls(assets).find(d => ls(join(assets, d)).some(f => f.startsWith('vendor-frame-')));
     if (v) return join(assets, v);
   }
-  die(`Claude desktop app bundle not found (looked in: ${resources.join(', ') || 'nothing for ' + process.platform}). ` +
-    `Find the app's resources folder (the one containing ion-dist or ion-dist.asar) and write its path to ${savedPath}.`);
+  die(`Claude desktop app bundle not found (looked in: ${resources.join(', ') || 'nothing for ' + process.platform}).`);
 }
 const cacheRoot = env.LATEX_CHECK_CACHE ?? {
   win32: join(env.LOCALAPPDATA ?? join(home, 'AppData', 'Local'), 'claude-latex-check'),

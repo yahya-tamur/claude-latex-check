@@ -65,7 +65,7 @@ Node, and the check works in both. Where Node isn't available, Claude follows th
 | `.claude-plugin/` | Plugin and marketplace manifests |
 
 Per-machine files live in the plugin's data folder (`~/.claude/plugins/data/<id>/`), which
-survives plugin updates: `fixes.local.md`, `app-path.local` and jsdom.
+survives plugin updates: `fixes.local.md` and jsdom.
 
 ## Running it yourself
 
@@ -102,15 +102,16 @@ after an app update.
 Install locations of the desktop app vary by platform, store and version, so the checker doesn't
 rely on a fixed list. It looks in this order:
 
-1. `app-path.local` in the plugin's data folder, if it exists. Claude saves the app's location
-   there when it isn't found automatically. The checker cuts any folder name at its version
-   number, so `Claude_1.2.3.0_x64__pzs8sxrjxfjjc` becomes `Claude_*`. When several folders match,
-   the most recently modified one that contains the app is used, so the saved location follows
-   updates.
-2. A few common locations: the Linux package (`/usr/lib/claude-desktop/resources`, tested),
-   `/Applications/Claude.app` on macOS, and `%LOCALAPPDATA%\AnthropicClaude` on Windows.
+1. The running desktop app. The app runs whenever the Code tab is in use, so the checker takes the
+   folder next to its executable (from `/proc` on Linux, `ps` on macOS, PowerShell on Windows).
+   That's always the current version, and it works for Microsoft Store installs, whose folder
+   under `C:\Program Files\WindowsApps` can't be listed.
+2. A few common locations, for when the running app can't be seen (for example in a sandbox): the
+   Linux package (`/usr/lib/claude-desktop/resources`, tested), `/Applications/Claude.app` on
+   macOS, and `%LOCALAPPDATA%\AnthropicClaude` on Windows.
 
-`CLAUDE_DESKTOP_RESOURCES` overrides both.
+`CLAUDE_DESKTOP_RESOURCES` overrides both. If the app isn't found, Claude checks with `lint.mjs`
+instead.
 
 The first run for each app version copies and patches the app's code into a cache, and removes
 copies for older versions. Newer app builds pack it into `ion-dist.asar`, which is unpacked once
