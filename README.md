@@ -21,9 +21,13 @@ The app guesses which spans are math, so valid TeX can still show as plain text,
 
 ## Using it with Claude
 
-Tell a Claude Code session on the machine, in any folder: "use
-github.com/yahya-tamur/claude-latex-check to check LaTeX before sending". Following
-[CLAUDE.md](CLAUDE.md), it:
+Tell a Claude Code session on the machine, in any folder:
+
+```
+use github.com/yahya-tamur/claude-latex-check to check LaTeX before sending
+```
+
+Following [CLAUDE.md](CLAUDE.md), it:
 
 1. Clones the repo to a stable place (e.g. `~/tools/claude-latex-check`) and runs `npm install`.
 2. Offers to install it **globally, not just for that session**. It adds the short rules from
