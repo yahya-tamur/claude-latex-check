@@ -83,10 +83,11 @@ function unpackAsar(archive) {
 // updates; after that come a few common guesses.
 const args = process.argv.slice(2);
 let flag = 'on', file, dataDir;
-let showFixes = false, addFix, setAppPath;
+let showFixes = false, addFix, setAppPath, surface = 'code';
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--flag') flag = args[++i];
   else if (args[i] === '--data') dataDir = args[++i];
+  else if (args[i] === '--surface') surface = args[++i];
   else if (args[i] === '--show-fixes') showFixes = true;
   else if (args[i] === '--add-fix') addFix = args[++i];
   else if (args[i] === '--set-app-path') setAppPath = args[++i];
@@ -166,6 +167,7 @@ const cacheRoot = env.LATEX_CHECK_CACHE ?? {
 }[process.platform] ?? join(env.XDG_CACHE_HOME ?? join(home, '.cache'), 'claude-latex-check');
 
 if (flag !== 'on' && flag !== 'off') die(`--flag must be on or off, got ${flag}`);
+if (surface !== 'code' && surface !== 'chat') die(`--surface must be code or chat, got ${surface}`);
 const text = readFileSync(file ?? 0, 'utf8');
 
 // Math delimiters outside code. Without any (and no stray \commands) there is nothing to render.
@@ -276,6 +278,16 @@ const [hookName, useTranscriptMarkdown] = pickOne(await load(files.renderer),
   f => src(f).includes('guardedInline:') && src(f).includes('rehypePlugins:'), 'transcript markdown hook');
 const [, ReactMarkdown] = pickOne(await load(files.markdown),
   f => /\.runSync\([\w$]+\.parse\(/.test(src(f)) && f.length === 1, 'react-markdown');
+// --surface chat: the conversation view claude.ai chats and Cowork share renders text with its own
+// markdown component (memo-wrapped, takes `text`, sets up the same in-house LaTeX plugin itself).
+let ChatMarkdown;
+if (surface === 'chat') {
+  const chatFiles = jsFiles.filter(f => { const s = read(SRC, f); return s.includes('inHouseLatexPlugin:') && s.includes('normalizationMode:'); });
+  const memos = (await Promise.all(chatFiles.map(f => import(pathToFileURL(join(dir, f)).href))))
+    .flatMap(m => Object.entries(m)).filter(([, v]) => v?.$$typeof === Symbol.for('react.memo') && typeof v.type === 'function');
+  [, ChatMarkdown] = pickOne(memos.map(([k, v]) => [k, v]),
+    v => src(v.type).includes('inHouseLatexPlugin:') && src(v.type).includes('normalizationMode:'), 'chat markdown component');
+}
 console.log = quiet;
 
 // Wiring check, once per app version: some component must still call this hook the way the Code
@@ -298,7 +310,8 @@ async function render(md, waitForMath) {
   }
   const el = document.createElement('div');
   document.body.append(el);
-  createRoot(el, { onUncaughtError: e => die(e?.stack ?? e) }).render(jsx(Transcript, {}));
+  const node = surface === 'chat' ? jsx(ChatMarkdown, { text: md, typography: 'prose', isStreaming: false }) : jsx(Transcript, {});
+  createRoot(el, { onUncaughtError: e => die(e?.stack ?? e) }).render(node);
   // Math plugins load lazily on first use; wait until math shows up or time runs out.
   for (let t = 0; waitForMath && t < 40 && !el.querySelector('.katex, .katex-error'); t++) await new Promise(r => setTimeout(r, 100));
   await new Promise(r => setTimeout(r, 300));
@@ -309,13 +322,19 @@ async function render(md, waitForMath) {
 // Also loads the math plugins, so the real render below needs no waiting.
 const canary = await render('Canary $a^2$ inline.\n\n$$b^2$$\n', true);
 const canaryMath = [...canary.querySelectorAll('.katex annotation')].map(e => e.textContent.trim()).join(' ');
-if (canaryMath !== (flag === 'on' ? 'a^2 b^2' : 'b^2')) die(`canary rendered [${canaryMath}]; the pipeline no longer works`);
+if (canaryMath !== (flag === 'on' || surface === 'chat' ? 'a^2 b^2' : 'b^2')) die(`canary rendered [${canaryMath}]; the pipeline no longer works`);
 
 const el = await render(text, false);
 if (!el.textContent.trim() && text.trim()) die('renderer produced no output');
 
-const rendered = el.querySelectorAll('.katex').length;
 const errors = [...el.querySelectorAll('.katex-error')];
+// The app's KaTeX shows an unknown command literally (e.g. "\notacommand" as plain text inside the
+// formula) instead of raising an error, so look for text runs that are just a \command.
+const tex = k => k.querySelector('annotation')?.textContent.trim() ?? k.textContent.trim();
+const unknown = [...el.querySelectorAll('.katex')].flatMap(k =>
+  [...k.querySelectorAll('.katex-html .mord.text')].map(t => t.textContent.trim())
+    .filter(t => /^\\[a-zA-Z]+$/.test(t)).map(cmd => [cmd, tex(k)]));
+const rendered = el.querySelectorAll('.katex').length - new Set(unknown.map(([, t]) => t)).size;
 const rest = el.cloneNode(true);
 rest.querySelectorAll('.katex, .katex-error, code, pre').forEach(e => e.remove());
 const leftover = rest.textContent.match(/\$\$?[^$\n]+\$?\$?|\\\(.+?\\\)|\\\[.+?\\\]|\\[a-zA-Z]{2,}/g) ?? [];
@@ -335,7 +354,8 @@ for (const m of prose.matchAll(/\\(\()([\s\S]+?)\\\)|\\(\[)([\s\S]+?)\\\]/g)) {
 }
 
 for (const e of errors) console.log(`FAIL  KaTeX error in ${e.textContent.trim()}: ${(e.getAttribute('title') ?? '').replace(/^ParseError: KaTeX parse error: /, '').split('\n')[0]}`);
+for (const [cmd, t] of unknown) console.log(`FAIL  unknown command ${cmd} shown literally in ${t}`);
 for (const s of leftover) console.log(`FAIL  shown as text: ${s}`);
-const failed = errors.length + leftover.length;
+const failed = errors.length + unknown.length + leftover.length;
 console.log(failed ? `${failed} failed, ${rendered} rendered` : `ok: ${rendered} rendered`);
 process.exit(failed ? 1 : 0);

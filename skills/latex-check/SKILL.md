@@ -1,6 +1,6 @@
 ---
 name: latex-check
-description: Write LaTeX math that renders in the Claude desktop app's Code tab, and check replies before sending. Use whenever a reply will contain math in $...$ or $$...$$.
+description: Write LaTeX math that renders in Claude Code (the desktop app's Code tab), and check replies before sending. Use whenever a reply in Claude Code will contain math in $...$ or $$...$$.
 allowed-tools: Bash(node *) PowerShell(node *)
 ---
 
@@ -60,12 +60,15 @@ Rewrite just that span:
      `node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --set-app-path "<path>"`.
      The checker replaces version numbers in folder names with `*` itself, so the location keeps
      working after updates.
-   - Otherwise, an app update has probably broken the checker. Tell the user once per session that
-     math couldn't be checked, and suggest `claude plugin update latex-check@latex-check`, since a
-     fix may already be published. If it still fails after updating, suggest reporting it at
+   - Otherwise, an app update has probably broken the checker. For the rest of the session, check
+     replies with the rules lint instead, which needs no app and also catches KaTeX errors:
+     `node "${CLAUDE_PLUGIN_ROOT}/lint.mjs" <file>`
+     Fix flagged spans the same way. It's stricter than the app, so it may flag formulas that would
+     render. Tell the user once that the full check isn't working, and suggest
+     `claude plugin update latex-check@latex-check`, since a fix may already be published. If it
+     still fails after updating, suggest reporting it at
      https://github.com/yahya-tamur/claude-latex-check/issues with the error message. If the user
-     wants to repair it themselves, `${CLAUDE_PLUGIN_ROOT}/MAINTENANCE.md` explains how. Otherwise,
-     keep writing by the rules and don't re-run the checker this session.
+     wants to repair it themselves, `${CLAUDE_PLUGIN_ROOT}/MAINTENANCE.md` explains how.
 
 Plain dollar amounts like "$5 and $10" are reported as failures. That's a known false positive;
 ignore it. Don't read `check.mjs`, the tests or the app's files during normal use.

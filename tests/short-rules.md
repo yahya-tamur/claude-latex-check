@@ -1,6 +1,6 @@
 Let $x$ be given and set $y = f(x)$. Then $x_{i} \in A$ and $A_{B} \subseteq C$ and $x'^{n} = x^{\prime n}$.
 
-The family $g = (x_{i})$ and the value $n = [A \colon B]$ and $r^{-1} = \frac{1}{r}$ and $2 \cdot x + 1 = 0$.
+The family $g = (x_{i})$ and the value $n = [A \colon B]$ and $r^{-1} = \frac{1}{r}$ and $y = 2 \cdot x + 1$.
 
 The map $c \mapsto a \cdot b \cdot c$ and $\bar{A} = A B / B$ and $\mathbf{u} \cdot \mathbf{v} = \sum_{i} u_{i} v_{i}$.
 

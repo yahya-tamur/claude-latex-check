@@ -1,7 +1,11 @@
 # claude-latex-check
 
-A Claude Code plugin that makes LaTeX math render in the Claude desktop app's Code tab. To install,
-run these in a terminal (details under [Installing](#installing)):
+A plugin that makes LaTeX math render in Claude's replies: in Claude Code (the desktop app's Code
+tab), on claude.ai and in Cowork. It's one plugin, `latex-check`, with a skill for each surface.
+
+## Installing
+
+**Claude Code**, in a terminal:
 
 ```bash
 claude plugin marketplace add yahya-tamur/claude-latex-check
@@ -11,43 +15,54 @@ claude plugin marketplace add yahya-tamur/claude-latex-check
 claude plugin install latex-check@latex-check
 ```
 
-The app guesses which spans are math, so valid TeX can still show as plain text, for example
-`$1/r$`, `$a \cdot b -$` or any inline span over 60 characters. The plugin has one skill,
-`latex-check`, which Claude loads whenever a reply will contain math. It has three parts:
+Or inside a session, `/plugin marketplace add yahya-tamur/claude-latex-check` and then
+`/plugin install latex-check@latex-check`. Update later with
+`claude plugin update latex-check@latex-check`.
 
-- **Rules** for writing math that renders, and how to fix each kind of formula that doesn't, in the
-  skill itself, so Claude follows them from the first draft.
+**claude.ai and Cowork:** in **Customize > Plugins**, choose **Add > Add marketplace**, enter
+`yahya-tamur/claude-latex-check`, and install `latex-check` from it. A plugin installed on your
+account also reaches Claude Code as `latex-check@synced`, so install it in one place or the other.
+
+The skills' short descriptions are always in context, and the rest loads only in sessions that
+involve math.
+
+## In Claude Code
+
+Needs Node 18+ and the Claude desktop app on the same machine. The Code tab guesses which spans are
+math, so valid TeX can still show as plain text, for example `$1/r$`, `$a \cdot b -$` or any
+inline span over 60 characters. The `latex-check` skill has three parts:
+
+- **Rules** for writing math that renders, and how to fix each kind of formula that doesn't, so
+  Claude follows them from the first draft.
 - **A checker**, `check.mjs`, that runs the installed app's own renderer (its markdown code,
-  react-markdown and KaTeX) in a simulated browser (jsdom). Claude runs it on each reply with
-  math before sending, and it reports every formula that would show as plain text or as a KaTeX
-  error.
+  react-markdown and KaTeX) in a simulated browser (jsdom). Claude runs it on each reply with math
+  before sending, and it reports every formula that would show as plain text or with an error. The
+  first check on a machine installs jsdom and builds a cache, so it takes a bit longer.
 - **Fixes:** when a check fails, Claude rewrites only the flagged formulas, and records each new fix
   in a `fixes.local.md` file on that machine, so it doesn't repeat the mistake.
 
-## Installing
+## On claude.ai and in Cowork
 
-Needs Claude Code, Node 18+ and the Claude desktop app on the same machine. Run the two commands at
-the top in a terminal, or inside a Claude Code session use `/plugin marketplace add
-yahya-tamur/claude-latex-check` and then `/plugin install latex-check@latex-check`.
+These use a different view from the Code tab, and it's far more forgiving: it renders almost any
+`$...$` as math, including everything the Code tab's rules guard against. What still goes wrong is
+invalid TeX, which shows as an error or with a command spelled out literally, plus `$$...$$`
+mid-sentence and `$...$` split across lines.
 
-The plugin is installed for your user, so it applies to every session in every folder. The skill's
-short description is always in context, and the rest loads only in sessions that involve math. The
-first check on a machine installs jsdom and builds a cache, so it takes a bit longer.
-
-To update later (this also refreshes the marketplace):
-
-```bash
-claude plugin update latex-check@latex-check
-```
+The checker needs the desktop app, so it can't run there. The `latex-check-chat` skill covers what
+does go wrong instead: three short rules, and a script that runs each formula through KaTeX
+(bundled, MIT, the version the app ships) and needs only Node. It hasn't been tried on claude.ai or
+in Cowork yet; if Node isn't available there, Claude follows the rules alone.
 
 ## Where things are
 
 | File | What it is |
 |---|---|
-| [`skills/latex-check/SKILL.md`](skills/latex-check/SKILL.md) | The skill: the rules, what to write when a formula fails, and how Claude checks replies |
-| [`check.mjs`](check.mjs), `env.mjs` | The checker |
+| [`skills/latex-check/`](skills/latex-check) | The Claude Code skill: rules, fixes for failing formulas, and how Claude checks replies |
+| [`skills/latex-check-chat/`](skills/latex-check-chat) | The claude.ai and Cowork skill, with its KaTeX script and the bundled KaTeX |
+| [`check.mjs`](check.mjs), `env.mjs` | The Claude Code checker |
+| [`lint.mjs`](lint.mjs) | Checks a draft against the Claude Code rules and KaTeX without the app; the fallback when the checker breaks |
 | [`MAINTENANCE.md`](MAINTENANCE.md) | Curating the rules from local fixes, and repairing the checker after an app update |
-| `tests/`, `test.mjs` | One test per kind of failure in the skill, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
+| `tests/`, `test.mjs` | One test per kind of failure, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
 | `.claude-plugin/` | Plugin and marketplace manifests |
 
 Per-machine files live in the plugin's data folder (`~/.claude/plugins/data/<id>/`), which
@@ -75,7 +90,8 @@ FAIL  shown as text: $1/r$
 
 Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. A check takes
 about 3 s, or 0.2 s for text with no math. `--flag off` simulates the app's inline-math feature
-flag being off; then only `$$` blocks render. The default is `on`.
+flag being off; then only `$$` blocks render. The default is `on`. The chat skill's KaTeX check
+runs the same way: `node skills/latex-check-chat/scripts/katex-check.mjs reply.md`.
 
 `npm test` runs all 25 cases in `tests/` (~75 s) and compares each result with what's expected.
 Run it after changing the skill, the tests or `check.mjs`, or after an app update.
@@ -86,7 +102,7 @@ App updates can break the checker. Report problems on the
 [issues page](https://github.com/yahya-tamur/claude-latex-check/issues); fixes go out to everyone
 through plugin updates. [MAINTENANCE.md](MAINTENANCE.md) explains how to repair it yourself.
 
-## Platforms
+## Finding the desktop app
 
 Install locations of the desktop app vary by platform, store and version, so the checker doesn't
 rely on a fixed list. It looks in this order:

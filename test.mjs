@@ -9,7 +9,7 @@ const expected = {
   '01-mixed.md': '1 failed, 14 rendered',              // $1/r$: starts with a digit, no TeX operator
   '02-digits.md': '2 failed, 1 rendered',              // $1/r$, $2x$ fail; $\frac{1}{r}$ renders
   '03-inline-dd.md': '1 failed, 0 rendered',           // $$...$$ mid-sentence stays text
-  '04-katex-error.md': '1 failed, 1 rendered',         // \frac{1} is a KaTeX error
+  '04-katex-error.md': '2 failed, 0 rendered',         // \frac{1} is a KaTeX error; \notacommand shows literally
   '05-table-pipe.md': 'ok: 1 rendered',
   '06-list.md': 'ok: 3 rendered',
   '07-display-multiline.md': 'ok: 1 rendered',
@@ -51,5 +51,36 @@ for (const [file, want] of Object.entries(expected)) {
   const got = out.trim().split('\n').pop();
   if (got !== want) { console.log(`DIFF  ${file}: expected "${want}", got "${got}"`); bad++; }
 }
-console.log(bad ? `${bad} of ${Object.keys(expected).length} differ` : `all ${Object.keys(expected).length} as expected`);
+// The chat skill's KaTeX script (no app needed). These match what the chat view renders.
+const katexExpected = {
+  '01-mixed.md': 'ok: 15 checked', '02-digits.md': 'ok: 3 checked', '03-inline-dd.md': '1 failed, 0 checked',
+  '04-katex-error.md': '2 failed, 2 checked', '05-table-pipe.md': 'ok: 1 checked', '06-list.md': 'ok: 3 checked',
+  '07-display-multiline.md': 'ok: 1 checked', '08-dollars.md': 'ok: no math', '09-escapes.md': 'ok: 2 checked',
+  '10-linebreak.md': '1 failed, 0 checked', '11-quote-code.md': 'ok: 1 checked', '12-no-math.md': 'ok: no math',
+  '13-backslash-delims.md': '1 failed, 10 checked', '14-long-span.md': 'ok: 9 checked', '15-bracket-span.md': 'ok: 3 checked',
+  '16-trailing-operator.md': 'ok: 2 checked', '17-quote-adjacent.md': 'ok: 2 checked', '18-quote-before.md': 'ok: 7 checked',
+  '19-paren-start.md': 'ok: 10 checked', '20-plain-letters.md': 'ok: 5 checked', '21-uppercase-subscript.md': 'ok: 4 checked',
+  '22-prime-superscript.md': 'ok: 4 checked', '23-bracket-colon.md': 'ok: 4 checked', '24-hyphen-before.md': 'ok: 2 checked',
+  'short-rules.md': 'ok: 17 checked',
+};
+const run = (script, file) => {
+  try { return { code: 0, out: execFileSync(process.execPath, [join(here, script), join(here, 'tests', file)], { encoding: 'utf8' }) }; }
+  catch (e) { return { code: e.status, out: e.stdout ?? '' }; }
+};
+const last = out => out.trim().split('\n').pop();
+for (const [file, want] of Object.entries(katexExpected)) {
+  const got = last(run('skills/latex-check-chat/scripts/katex-check.mjs', file).out);
+  if (got !== want) { console.log(`DIFF  katex-check ${file}: expected "${want}", got "${got}"`); bad++; }
+}
+
+// The rules lint (the fallback when check.mjs breaks) must flag every file the checker flags, except
+// the dollar amounts, which aren't math; and the sample written by the rules must pass it.
+for (const [file, want] of Object.entries(expected)) {
+  if (!want.includes('failed') || file === '08-dollars.md') continue;
+  if (run('lint.mjs', file).code !== 1) { console.log(`DIFF  lint ${file}: expected failures, got none`); bad++; }
+}
+if (last(run('lint.mjs', 'short-rules.md').out) !== 'ok: 17 checked') { console.log('DIFF  lint short-rules.md: expected "ok: 17 checked"'); bad++; }
+
+const total = Object.keys(expected).length * 2 + 1;
+console.log(bad ? `${bad} of ${total} differ` : `all ${total} as expected`);
 process.exit(bad ? 1 : 0);

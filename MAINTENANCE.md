@@ -18,8 +18,10 @@ Each machine collects the fixes its sessions found in `fixes.local.md`, in the p
 3. Add a `tests/*.md` case, with its expected summary in `test.mjs`.
 4. If a new rule isn't already implied by the skill's "Rules" section, update it, keeping it
    short. Extend `tests/short-rules.md` to use the new rule correctly.
-5. Run `npm test` and `claude plugin validate .`, then commit and push.
-6. On each machine, run `claude plugin update latex-check@latex-check`.
+5. If you changed the "Rules" section, update `lint.mjs` to match. `npm test` fails if the lint
+   misses a failure the checker catches, or flags the short-rules sample.
+6. Run `npm test` and `claude plugin validate .`, then commit and push.
+7. On each machine, run `claude plugin update latex-check@latex-check`.
 
 ## Signs that it's broken
 
@@ -75,10 +77,20 @@ user sees in the real app catches that.
   the app's math rules may really have changed. Check how the test text renders in the app before
   you change any expectation.
 
+## Comparing with the chat view
+
+`--surface chat` renders through the conversation view claude.ai chats and Cowork share, instead of
+the Code tab's transcript. It sets up the same in-house LaTeX plugin without the "looks like a
+formula" checks, so it accepts nearly everything the Code tab rejects. Run the tests through both
+to see where they differ. Code blocks crash this mode (their component needs a translation provider
+the harness doesn't set up), so leave them out of the text you compare. The chat skill's KaTeX
+script is tested in `test.mjs` against results that match this view.
+
 ## If it can't be patched
 
 Rewrite it. Keep the same contract so callers don't change:
-- `node check.mjs [--flag on|off] [--data <folder>] [file]`, stdin when no file. `--data` is where
+- `node check.mjs [--flag on|off] [--surface code|chat] [--data <folder>] [file]`, stdin when no
+  file. `--data` is where
   per-machine state lives (`app-path.local`, `fixes.local.md`, and jsdom when it isn't next to the
   script).
 - `--show-fixes`, `--add-fix "<text>"` and `--set-app-path "<path>"` read or write that state and
