@@ -1,10 +1,31 @@
 # Writing math that renders
 
 The app only treats a span as math when it looks like a formula. These rules come from real
-failures; each has a case in `tests/`. Read this, plus `fixes.local.md` if it exists, before writing
-math.
+failures; each has a case in `tests/`.
 
-## Inline `$...$`
+## Short rules
+
+Write math this way from the start. This block is meant to be copied into an always-loaded
+CLAUDE.md (between the markers), so it stays short and conservative. `tests/25-short-rules.md` is
+written by these rules and must render fully.
+
+<!-- short-rules:start -->
+Math formatting for the Claude desktop app (inline math renders only if it looks like a formula):
+- Use `$...$` inline and `$$...$$` only as its own paragraph. Never use `\(...\)` or `\[...\]`.
+- Inline spans: at most 60 characters, on one line, not starting with a digit, `(` or `[`, not
+  ending with an operator.
+- Every inline span other than a single letter or `f(x)` needs a `\command` or one of
+  `= + - < > ^ _`. Plain letters like `$xy$` or `$AB/B$` stay text.
+- Brace every subscript and superscript: `x_{i}`, `x^{2}`, `x'^{n}`.
+- Put a space before each opening `$`, and a space or `.,;:!?)` after each closing `$`. Never a
+  straight quote or hyphen touching a `$`: use “curly quotes” or a non-breaking hyphen (U+2011).
+<!-- short-rules:end -->
+
+## Looking up a fix
+
+When the checker flags a span, find its rule below and rewrite just that span.
+
+### Inline `$...$`
 
 - **At most 60 characters between the dollars.** Longer spans show as text. Split them, or move
   the formula to a `$$` paragraph.
@@ -50,11 +71,11 @@ math.
     looks the same.
 - **Keep each span on one line.**
 
-## Display `$$...$$`
+### Display `$$...$$`
 
 - Only as its own paragraph, never mid-sentence. `$$x+1$$` inside a sentence shows as text.
 
-## Avoid `\(...\)` and `\[...\]`
+### Avoid `\(...\)` and `\[...\]`
 
 - Simple ones show as plain text with the backslashes gone: `\(x\)` becomes `(x)`, `\(2x\)` becomes
   `(2x)`. A `\[...\]` block over several lines shows as text too. Use `$...$` and `$$...$$`.

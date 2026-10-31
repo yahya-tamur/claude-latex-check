@@ -6,17 +6,27 @@ Read only this part unless the checker exits 2 or the user reports a rendering p
 
 1. Clone once to a stable place and reuse it in later sessions (e.g. `~/tools/claude-latex-check`),
    then `npm install` there. Node 18+ and the Claude desktop app must be on the same machine.
-   Optionally run `npm test` once (~70 s, prints one line).
-2. Before writing any math, read `<repo>/FIXES.md` (the rules for what renders) and
-   `<repo>/fixes.local.md` if it exists. Use those forms from the start.
-3. For every reply containing LaTeX: write the reply's markdown, exactly as it will be sent, to a
-   temp file and run `node <repo>/check.mjs <file>`. Fix each `FAIL` line, re-run, then send.
-4. Exit 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. On 2, send the
+   Optionally run `npm test` once (~75 s, prints one line).
+2. Install the short rules once per machine. They're the block between the `short-rules` markers
+   at the top of `<repo>/FIXES.md`. If the user's global `~/.claude/CLAUDE.md` doesn't contain
+   that block, or holds an older copy, offer to add or update it there, with the markers. That file
+   is loaded into every turn of every session, so the rules can't fade from context the way a file
+   you read once can. Until it's installed, read the block yourself at the start of the session.
+3. Write math by the short rules from the start. Also read `<repo>/fixes.local.md`, if it exists,
+   once per session. Don't read the rest of FIXES.md up front.
+4. For every reply containing LaTeX: write the reply's markdown, exactly as it will be sent, to a
+   temp file and run `node <repo>/check.mjs <file>`.
+5. On `FAIL` lines, fix only the flagged spans. Edit each span in the temp file in place, and don't
+   regenerate the reply. If the fix isn't obvious, look up that span's rule under "Looking up a fix"
+   in FIXES.md. Re-run the checker on the edited file, then send that text.
+6. Exit 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. On 2, send the
    reply anyway, tell the user the math wasn't checked, and see "When it breaks" below.
 
 Talking to the user: keep all of this behind the scenes. Plain wording like "I rewrote a formula
 so it renders" or "I couldn't check the math rendering this time" is fine. Don't name FIXES.md,
-`fixes.local.md`, `check.mjs`, exit codes or the rules unless the user asks how it works.
+`fixes.local.md`, `check.mjs`, exit codes or the rules unless the user asks how it works. When
+offering step 2, say something like "Can I add a few math-formatting rules to your global Claude
+instructions (`~/.claude/CLAUDE.md`)?"
 
 Learn from every failure. Each fail-and-retry round costs a re-run and a rewrite, so don't hit the
 same failure twice:
@@ -34,8 +44,9 @@ same failure twice:
   those.
 
 Keeping token use low:
-- Read FIXES.md and `fixes.local.md` once per session, not before every reply. Re-read
-  `fixes.local.md` only after appending to it.
+- The short rules cost nothing extra once they're in the global CLAUDE.md. Read the rest of
+  FIXES.md only to look up a specific failure, and `fixes.local.md` once per session.
+- A retry should be a few small edits to the flagged spans, not a rewritten reply.
 - Run the checker once per finished draft, not per formula. Output is already minimal: only
   failures plus a summary line. A reply without math costs 0.2 s and prints `ok: no math`.
 - Don't read `check.mjs`, the tests or the app bundle during normal use.

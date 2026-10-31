@@ -9,13 +9,17 @@ a reply before it's sent.
 The app guesses which spans are math, so valid TeX can still show as plain text, for example
 `$1/r$`, `$a \cdot b -$` or any inline span over 60 characters. The repo has three parts:
 
-- **[FIXES.md](FIXES.md), the main part:** a list of what fails and what renders instead, as rules
-  with examples. Claude reads it before writing math, so most replies render on the first try.
+- **[FIXES.md](FIXES.md), the main part:** at the top, a few short rules for writing math that
+  renders. Claude offers to copy them into your global `~/.claude/CLAUDE.md`, which is loaded into
+  every turn of every session, so they're followed from the first draft. Below them is the full
+  list of what fails and what renders instead, with examples. Claude looks things up there when a
+  check fails.
 - **`check.mjs`:** checks a draft by running the installed app's own renderer (its markdown code,
   react-markdown and KaTeX) in a simulated browser (jsdom). It reports every formula that would
   show as plain text or as a KaTeX error.
-- **A learning loop:** when the check fails and Claude finds a form that renders, it records both
-  in `fixes.local.md` and uses the working form from then on. That file is git-ignored, one per
+- **A learning loop:** when the check fails, Claude rewrites only the flagged formulas. Once it
+  finds a form that renders, it records both in `fixes.local.md` and uses the working form from
+  then on. That file is git-ignored, one per
   clone, and shared by every session on the machine. You move entries from it into FIXES.md over
   time (see [Curating fixes](#curating-fixes)).
 
@@ -28,9 +32,10 @@ npm install
 npm test
 ```
 
-`npm test` runs `tests/*.md` (24 cases, ~70 s) and compares each result with what's expected.
-There's a case for every rule in FIXES.md. If anything differs after an app update, the app's math
-handling or its internals changed.
+`npm test` runs `tests/*.md` (25 cases, ~75 s) and compares each result with what's expected.
+There's a case for every rule in FIXES.md. One more case is written strictly by the short rules
+and must render fully. If anything differs after an app update, the app's math handling or its
+internals changed.
 
 ## Usage
 
@@ -56,10 +61,15 @@ The default is `on`.
 Claude never edits FIXES.md or `tests/`, so they change only when you curate them. Every so
 often, for each machine:
 
-1. Move entries from that clone's `fixes.local.md` into FIXES.md.
+1. Move entries from that clone's `fixes.local.md` into FIXES.md, under "Looking up a fix".
 2. Check the examples with `node check.mjs`.
 3. Add a `tests/*.md` case, with its expected summary in `test.mjs`.
-4. Run `npm test`.
+4. If a new rule isn't already implied by the short rules, update the short rules block, keeping
+   it short. Extend `tests/25-short-rules.md` to use the new rule correctly.
+5. Run `npm test`.
+
+When the short rules change, Claude offers to update the copy in each machine's global CLAUDE.md
+on its next session there.
 
 ## Platforms
 
