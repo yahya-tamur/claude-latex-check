@@ -34,8 +34,9 @@ const expected = {
   '22-prime-superscript.md': '1 failed, 3 rendered',   // $x'^n$ fails; $x'^{n}$ renders
   '23-bracket-colon.md': '2 failed, 2 rendered',       // $[A:B]$ fails; $[A \colon B]$ renders
   '24-hyphen-before.md': '1 failed, 1 rendered',       // word-$k$ fails; U+2011 hyphen renders
-  // written strictly by the short rules in FIXES.md: if this fails, the short rules need updating
-  '25-short-rules.md': 'ok: 17 rendered',
+  // a sample written strictly by the short rules in FIXES.md: must render fully, or the short
+  // rules (or the checker) need fixing. Also the quick setup check in CLAUDE.md.
+  'short-rules.md': 'ok: 17 rendered',
 };
 
 let bad = 0;

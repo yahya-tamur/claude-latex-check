@@ -29,12 +29,15 @@ use github.com/yahya-tamur/claude-latex-check to check LaTeX before sending
 
 Following [CLAUDE.md](CLAUDE.md), it:
 
-1. Clones the repo to a stable place (e.g. `~/tools/claude-latex-check`) and runs `npm install`.
+1. Clones the repo to a stable place (e.g. `~/tools/claude-latex-check`), runs `npm install`, and
+   confirms the checker works with a 3-second test. If the app isn't in a usual place, it finds
+   the app and saves the location.
 2. Offers to install it **globally, not just for that session**. It adds the short rules from
-   FIXES.md and one line pointing to the checker to your global `~/.claude/CLAUDE.md`. That file is
-   loaded into every turn of every Claude Code session on the machine, in every folder. So after
-   this one-time setup, every session writes math by the short rules from the first draft and
-   checks replies before sending. You don't have to mention the repo again.
+   FIXES.md and an instruction to run the check in every session to your global
+   `~/.claude/CLAUDE.md`. That file is loaded into every turn of every Claude Code session on the
+   machine, in every folder. So after this one-time setup, every session writes math by the short
+   rules from the first draft and checks replies before sending. You don't have to mention the
+   repo again.
 
 From then on, sessions:
 - write math by the short rules;
@@ -55,10 +58,15 @@ npm install
 npm test
 ```
 
-`npm test` runs `tests/*.md` (25 cases, ~75 s) and compares each result with what's expected.
-There's a case for every rule in FIXES.md. One more case is written strictly by the short rules
-and must render fully. If anything differs after an app update, the app's math handling or its
-internals changed.
+`npm test` runs all of `tests/*.md` (25 cases, ~75 s) and compares each result with what's
+expected. There's a case for every rule in FIXES.md, plus `tests/short-rules.md`, a sample written
+strictly by the short rules that must render fully. If anything differs after an app update, the
+app's math handling or its internals changed. For a quick check that the checker works and the
+short rules still hold, run just that sample (about 3 s):
+
+```bash
+node check.mjs tests/short-rules.md
+```
 
 To check a draft:
 
@@ -88,21 +96,22 @@ often, for each machine:
 2. Check the examples with `node check.mjs`.
 3. Add a `tests/*.md` case, with its expected summary in `test.mjs`.
 4. If a new rule isn't already implied by the short rules, update the short rules block, keeping
-   it short. Extend `tests/25-short-rules.md` to use the new rule correctly.
+   it short. Extend `tests/short-rules.md` to use the new rule correctly.
 5. Run `npm test`.
 
 ## Platforms
 
-The app's bundle is looked up in these places:
+Install locations vary by platform, store and version, so the checker doesn't rely on a fixed
+list. It looks in this order:
 
-| Platform | Location |
-|---|---|
-| Linux | `/usr/lib/claude-desktop/resources`, `/opt/Claude/resources`, `/opt/claude-desktop/resources`, `/usr/lib/claude/resources` |
-| macOS | `/Applications/Claude.app/Contents/Resources`, `~/Applications/Claude.app/Contents/Resources` |
-| Windows | `%LOCALAPPDATA%\AnthropicClaude\app-<version>\resources` (newest version) |
+1. `app-path.local` in the clone (git-ignored), if it exists. When the app isn't found, Claude
+   finds the folder containing `ion-dist` or `ion-dist.asar` and saves its path here, with `*` in
+   place of the version number, e.g. `C:\Program Files\Claude_*\app\resources`. When several
+   folders match, the most recently modified one is used, so the saved path survives updates.
+2. A few common locations: the Linux package (`/usr/lib/claude-desktop/resources`, tested),
+   `/Applications/Claude.app` on macOS, and `%LOCALAPPDATA%\AnthropicClaude` on Windows.
 
-Only the first Linux location has been tested. Elsewhere, set `CLAUDE_DESKTOP_RESOURCES` to the
-folder that contains `ion-dist` or `ion-dist.asar`.
+`CLAUDE_DESKTOP_RESOURCES` overrides both.
 
 The first run for each app version copies and patches the bundle into a cache, and removes copies
 for older versions. Newer app builds pack the bundle into `ion-dist.asar`, which is unpacked once

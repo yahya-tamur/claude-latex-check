@@ -6,11 +6,21 @@ Read only this part unless the checker exits 2 or the user reports a rendering p
 
 1. **Set up once per machine.**
    - Clone to a stable place (e.g. `~/tools/claude-latex-check`) and run `npm install` there.
-     Node 18+ and the Claude desktop app must be on the same machine. Optionally run `npm test`
-     (~75 s, prints one line).
+     Node 18+ and the Claude desktop app must be on the same machine.
+   - Run `node <repo>/check.mjs <repo>/tests/short-rules.md`. It should print `ok: 17 rendered`
+     (about 3 s). That sample is written by the short rules, so this confirms both that the checker
+     works with this app version and that the short rules still produce math that renders. Don't
+     run the full `npm test` here; it takes over a minute and is for maintenance.
+   - If the checker says it can't find the app, find the app's resources folder yourself (the one
+     containing `ion-dist` or `ion-dist.asar`; it varies by platform, store and version). Save its
+     path in `<repo>/app-path.local` with `*` in place of the version number, because the folder name
+     changes with every update. For example: `C:\Program Files\Claude_*\app\resources`. When
+     several folders match, the most recently modified one is used. If it stops being found after
+     an update, find it again the same way.
    - Offer to add two things to the user's global `~/.claude/CLAUDE.md`, which is loaded into every
      turn of every session in every folder. First, the block between the `short-rules` markers at
-     the top of `<repo>/FIXES.md`, markers included. Second, one line outside the markers:
+     the top of `<repo>/FIXES.md`, markers included. Second, outside the markers, an instruction to
+     run this check in every session:
      ``Check replies containing math with `node <repo>/check.mjs`; see `<repo>/CLAUDE.md`.``
    - If the block there differs from FIXES.md, offer to update it. Until it's installed, read the
      block yourself at the start of each session.
@@ -30,8 +40,9 @@ Read only this part unless the checker exits 2 or the user reports a rendering p
 Talking to the user: keep all of this behind the scenes. Plain wording like "I rewrote a formula
 so it renders" or "I couldn't check the math rendering this time" is fine. Don't name FIXES.md,
 `fixes.local.md`, `check.mjs`, exit codes or the rules unless the user asks how it works. When
-offering the setup in step 1, say something like "Can I add a few math-formatting rules to your
-global Claude instructions (`~/.claude/CLAUDE.md`)?"
+offering the setup in step 1, say something like "Can I add a few math-formatting rules, and an
+instruction to check math before sending, to your global Claude instructions
+(`~/.claude/CLAUDE.md`)?"
 
 Learn from every failure. Each fail-and-retry round costs edits and a re-run, so don't hit the
 same failure twice:
@@ -122,7 +133,8 @@ If it can't be patched, rewrite it. Keep the same contract so callers don't chan
   "on" matched what the user saw (only `$1/r$` failed in a reply with 15 formulas).
 - A rejected `\(x\)` renders as plain `(x)`, leaving no `$` or backslash to find. The checker counts
   `(body)` occurrences against the source instead.
-- Only the Linux install has been tested. The macOS and Windows paths are educated guesses;
-  `CLAUDE_DESKTOP_RESOURCES` overrides them.
+- Install locations vary by platform, store and version (the Microsoft Store build is under
+  `C:\Program Files\Claude_<version>\app\resources`), too many to list. So the checker tries a few
+  common ones, and Claude finds the rest and saves them in `app-path.local` with `*` for the version.
 - Known costs: ~3 s per check (it scans the bundle for markers and renders the canary each run).
   The once-per-version copy (~150 MB) and wiring check add no noticeable time.
