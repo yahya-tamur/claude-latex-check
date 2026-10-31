@@ -4,7 +4,8 @@
 // the same markdown hook + react-markdown + KaTeX the Code tab uses. Prints only problems: every
 // $...$, $$...$$, \(...\) or \[...\] left as plain text, and every KaTeX error.
 //
-// usage: node check.mjs [--flag on|off] [--data <folder>] [file.md]   (reads stdin when no file)
+// usage: node check.mjs [--flag on|off] [--data <folder>] [file.md ...]   (reads stdin when no file)
+//   Several files are checked in one run, each preceded by a "== <file>" line.
 //   --data  folder for per-machine state; the plugin passes ${CLAUDE_PLUGIN_DATA}. Default: next to
 //           this script.
 //   --show-fixes, --add-fix "<text>": print or append to fixes.local.md in the data folder, then
@@ -41,7 +42,8 @@ const home = homedir(), env = process.env;
 const ls = d => { try { return readdirSync(d); } catch { return []; } };
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const args = process.argv.slice(2);
-let flag = 'on', file, dataDir;
+let flag = 'on', dataDir;
+const inputs = [];
 let showFixes = false, addFix, surface = 'code';
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--flag') flag = args[++i];
@@ -49,7 +51,7 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--surface') surface = args[++i];
   else if (args[i] === '--show-fixes') showFixes = true;
   else if (args[i] === '--add-fix') addFix = args[++i];
-  else file = args[i];
+  else inputs.push(args[i]);
 }
 // Per-machine state (fixes.local.md, and jsdom when this isn't a dev checkout) lives in the data
 // folder: the plugin passes ${CLAUDE_PLUGIN_DATA}, which survives plugin updates.
@@ -122,12 +124,16 @@ const cacheRoot = env.LATEX_CHECK_CACHE ?? {
 
 if (flag !== 'on' && flag !== 'off') die(`--flag must be on or off, got ${flag}`);
 if (surface !== 'code' && surface !== 'chat') die(`--surface must be code or chat, got ${surface}`);
-const text = readFileSync(file ?? 0, 'utf8');
+const texts = (inputs.length ? inputs : [0]).map(f => readFileSync(f, 'utf8'));
+const header = i => { if (inputs.length > 1) console.log(`== ${inputs[i]}`); };
 
 // Math delimiters outside code. Without any (and no stray \commands) there is nothing to render.
-const prose = text.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, '');
-const hasDelimiters = /\$|\\\(|\\\[/.test(prose);
-if (!hasDelimiters && !/\\[a-zA-Z]{2,}/.test(prose)) { console.log('ok: no math'); process.exit(0); }
+const proseOf = text => text.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, '');
+const hasMath = text => /\$|\\\(|\\\[|\\[a-zA-Z]{2,}/.test(proseOf(text));
+if (!texts.some(hasMath)) {
+  texts.forEach((_, i) => { header(i); console.log('ok: no math'); });
+  process.exit(0);
+}
 
 const app = appBundle();
 const bundle = openBundle(app.root);
@@ -306,38 +312,45 @@ if (fresh) {
   writeFileSync(indexPath, JSON.stringify(index));
 }
 
-const el = await render(text, false);
-if (!el.textContent.trim() && text.trim()) die('renderer produced no output');
+let anyFailed = false;
+for (const [i, text] of texts.entries()) {
+  header(i);
+  if (!hasMath(text)) { console.log('ok: no math'); continue; }
+  const prose = proseOf(text);
+  const el = await render(text, false);
+  if (!el.textContent.trim() && text.trim()) die('renderer produced no output');
 
-const errors = [...el.querySelectorAll('.katex-error')];
-// The app's KaTeX shows an unknown command literally (e.g. "\notacommand" as plain text inside the
-// formula) instead of raising an error, so look for text runs that are just a \command.
-const tex = k => k.querySelector('annotation')?.textContent.trim() ?? k.textContent.trim();
-const unknown = [...el.querySelectorAll('.katex')].flatMap(k =>
-  [...k.querySelectorAll('.katex-html .mord.text')].map(t => t.textContent.trim())
-    .filter(t => /^\\[a-zA-Z]+$/.test(t)).map(cmd => [cmd, tex(k)]));
-const rendered = el.querySelectorAll('.katex').length - new Set(unknown.map(([, t]) => t)).size;
-const rest = el.cloneNode(true);
-rest.querySelectorAll('.katex, .katex-error, code, pre').forEach(e => e.remove());
-const leftover = rest.textContent.match(/\$\$?[^$\n]+\$?\$?|\\\(.+?\\\)|\\\[.+?\\\]|\\[a-zA-Z]{2,}/g) ?? [];
-// A rejected \(x\) shows as plain "(x)" (markdown eats the backslash), so it leaves no trace to find
-// above. Count each \(body\) / \[body\] whose "(body)" / "[body]" appears in the output more often
-// than the source has it written plainly.
-const count = (s, sub) => s.split(sub).length - 1;
-const bare = s => s.replace(/\\([()[\]])/g, '$1').replace(/\\,/g, ',');  // markdown's escape handling
-const plainProse = prose.replace(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/g, '');
-const seen = new Set();
-for (const m of prose.matchAll(/\\(\()([\s\S]+?)\\\)|\\(\[)([\s\S]+?)\\\]/g)) {
-  const open = m[1] ?? m[3], shown = bare(open + (m[2] ?? m[4]) + (open === '(' ? ')' : ']'));
-  if (seen.has(shown)) continue;
-  seen.add(shown);
-  const extra = count(rest.textContent, shown) - count(bare(plainProse), shown);
-  for (let k = 0; k < extra; k++) leftover.push(m[0]);
+  const errors = [...el.querySelectorAll('.katex-error')];
+  // The app's KaTeX shows an unknown command literally (e.g. "\notacommand" as plain text inside the
+  // formula) instead of raising an error, so look for text runs that are just a \command.
+  const tex = k => k.querySelector('annotation')?.textContent.trim() ?? k.textContent.trim();
+  const unknown = [...el.querySelectorAll('.katex')].flatMap(k =>
+    [...k.querySelectorAll('.katex-html .mord.text')].map(t => t.textContent.trim())
+      .filter(t => /^\\[a-zA-Z]+$/.test(t)).map(cmd => [cmd, tex(k)]));
+  const rendered = el.querySelectorAll('.katex').length - new Set(unknown.map(([, t]) => t)).size;
+  const rest = el.cloneNode(true);
+  rest.querySelectorAll('.katex, .katex-error, code, pre').forEach(e => e.remove());
+  const leftover = rest.textContent.match(/\$\$?[^$\n]+\$?\$?|\\\(.+?\\\)|\\\[.+?\\\]|\\[a-zA-Z]{2,}/g) ?? [];
+  // A rejected \(x\) shows as plain "(x)" (markdown eats the backslash), so it leaves no trace to find
+  // above. Count each \(body\) / \[body\] whose "(body)" / "[body]" appears in the output more often
+  // than the source has it written plainly.
+  const count = (s, sub) => s.split(sub).length - 1;
+  const bare = s => s.replace(/\\([()[\]])/g, '$1').replace(/\\,/g, ',');  // markdown's escape handling
+  const plainProse = prose.replace(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/g, '');
+  const seen = new Set();
+  for (const m of prose.matchAll(/\\(\()([\s\S]+?)\\\)|\\(\[)([\s\S]+?)\\\]/g)) {
+    const open = m[1] ?? m[3], shown = bare(open + (m[2] ?? m[4]) + (open === '(' ? ')' : ']'));
+    if (seen.has(shown)) continue;
+    seen.add(shown);
+    const extra = count(rest.textContent, shown) - count(bare(plainProse), shown);
+    for (let k = 0; k < extra; k++) leftover.push(m[0]);
+  }
+
+  for (const e of errors) console.log(`FAIL  KaTeX error in ${e.textContent.trim()}: ${(e.getAttribute('title') ?? '').replace(/^ParseError: KaTeX parse error: /, '').split('\n')[0]}`);
+  for (const [cmd, t] of unknown) console.log(`FAIL  unknown command ${cmd} shown literally in ${t}`);
+  for (const s of leftover) console.log(`FAIL  shown as text: ${s}`);
+  const failed = errors.length + unknown.length + leftover.length;
+  console.log(failed ? `${failed} failed, ${rendered} rendered` : `ok: ${rendered} rendered`);
+  anyFailed ||= failed > 0;
 }
-
-for (const e of errors) console.log(`FAIL  KaTeX error in ${e.textContent.trim()}: ${(e.getAttribute('title') ?? '').replace(/^ParseError: KaTeX parse error: /, '').split('\n')[0]}`);
-for (const [cmd, t] of unknown) console.log(`FAIL  unknown command ${cmd} shown literally in ${t}`);
-for (const s of leftover) console.log(`FAIL  shown as text: ${s}`);
-const failed = errors.length + unknown.length + leftover.length;
-console.log(failed ? `${failed} failed, ${rendered} rendered` : `ok: ${rendered} rendered`);
-process.exit(failed ? 1 : 0);
+process.exit(anyFailed ? 1 : 0);

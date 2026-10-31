@@ -1,6 +1,7 @@
-// Run check.mjs on every tests/*.md and compare with the expected summary line.
+// Run check.mjs on every tests/*.md and compare with the expected summary lines.
 // A mismatch after an app update means the app's math handling (or the harness) changed.
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -40,15 +41,23 @@ const expected = {
 };
 
 let bad = 0;
+// One checker run for all files, so the app's code loads once. Each file's output starts with a
+// "== <file>" line and ends with its summary line.
+// The lints below don't need it, so they all run alongside it.
+const node = args => promisify(execFile)(process.execPath, args, { encoding: 'utf8' })
+  .then(r => ({ code: 0, out: r.stdout }), e => ({ code: e.code, out: e.stdout ?? '', err: e.stderr ?? '' }));
+const run = (script, file) => node([join(here, script), join(here, 'tests', file)]);
+const checked = node([join(here, 'skills/latex-check/scripts/check.mjs'), ...Object.keys(expected).map(f => join(here, 'tests', f))]);
+const chatLints = Object.keys(expected).map(f => run('skills/latex-check-chat/scripts/lint.mjs', f));
+const codeLints = Object.keys(expected).map(f => run('skills/latex-check/scripts/lint.mjs', f));
+const { code, out, err } = await checked;
+if (code === 2) { console.log(`ERROR ${err.trim()}`); process.exit(1); }
+const summaries = Object.fromEntries(out.split(/^== /m).slice(1).map(part => {
+  const lines = part.trim().split('\n');
+  return [lines[0].split(/[\\/]/).pop(), lines.at(-1)];
+}));
 for (const [file, want] of Object.entries(expected)) {
-  let out;
-  try {
-    out = execFileSync(process.execPath, [join(here, 'skills/latex-check/scripts/check.mjs'), join(here, 'tests', file)], { encoding: 'utf8' });
-  } catch (e) {
-    if (e.status === 2) { console.log(`ERROR ${file}: ${e.stderr.trim()}`); bad++; continue; }
-    out = e.stdout;
-  }
-  const got = out.trim().split('\n').pop();
+  const got = summaries[file];
   if (got !== want) { console.log(`DIFF  ${file}: expected "${want}", got "${got}"`); bad++; }
 }
 // The chat skill's lint (no app needed). These match what the chat view renders.
@@ -63,23 +72,21 @@ const katexExpected = {
   '22-prime-superscript.md': 'ok: 4 checked', '23-bracket-colon.md': 'ok: 4 checked', '24-hyphen-before.md': 'ok: 2 checked',
   'short-rules.md': 'ok: 17 checked',
 };
-const run = (script, file) => {
-  try { return { code: 0, out: execFileSync(process.execPath, [join(here, script), join(here, 'tests', file)], { encoding: 'utf8' }) }; }
-  catch (e) { return { code: e.status, out: e.stdout ?? '' }; }
-};
 const last = out => out.trim().split('\n').pop();
+const chatResults = Object.fromEntries(Object.keys(expected).map((f, i) => [f, chatLints[i]]));
 for (const [file, want] of Object.entries(katexExpected)) {
-  const got = last(run('skills/latex-check-chat/scripts/lint.mjs', file).out);
+  const got = last((await chatResults[file]).out);
   if (got !== want) { console.log(`DIFF  chat lint ${file}: expected "${want}", got "${got}"`); bad++; }
 }
 
 // The Code tab skill's lint (the fallback when check.mjs breaks) must flag every file the checker flags, except
 // the dollar amounts, which aren't math; and the sample written by the rules must pass it.
+const codeResults = Object.fromEntries(Object.keys(expected).map((f, i) => [f, codeLints[i]]));
 for (const [file, want] of Object.entries(expected)) {
   if (!want.includes('failed') || file === '08-dollars.md') continue;
-  if (run('skills/latex-check/scripts/lint.mjs', file).code !== 1) { console.log(`DIFF  lint ${file}: expected failures, got none`); bad++; }
+  if ((await codeResults[file]).code !== 1) { console.log(`DIFF  lint ${file}: expected failures, got none`); bad++; }
 }
-if (last(run('skills/latex-check/scripts/lint.mjs', 'short-rules.md').out) !== 'ok: 17 checked') { console.log('DIFF  lint short-rules.md: expected "ok: 17 checked"'); bad++; }
+if (last((await codeResults['short-rules.md']).out) !== 'ok: 17 checked') { console.log('DIFF  lint short-rules.md: expected "ok: 17 checked"'); bad++; }
 
 const total = Object.keys(expected).length * 2 + 1;
 console.log(bad ? `${bad} of ${total} differ` : `all ${total} as expected`);

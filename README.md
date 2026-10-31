@@ -80,7 +80,8 @@ The second command should print `ok: 17 rendered`. That confirms that the checke
 app version and that the skill's rules still produce math that renders.
 
 To check a draft, run `node skills/latex-check/scripts/check.mjs reply.md`, or pipe the text in on
-stdin. Only problems are printed:
+stdin. Several files can be checked in one run, each headed by a `== <file>` line, which saves
+loading the app's code each time. Only problems are printed:
 
 ```
 FAIL  shown as text: $1/r$
@@ -92,7 +93,7 @@ about 3 s, or 0.2 s for text with no math. `--flag off` simulates the app's inli
 flag being off; then only `$$` blocks render. The default is `on`. The chat skill's check, its
 own `lint.mjs`, runs the same way: `node skills/latex-check-chat/scripts/lint.mjs reply.md`.
 
-`npm test` (~75 s) runs the 25 files in `tests/` through the checker and through the chat skill's
+`npm test` (~12 s) runs the 25 files in `tests/` through the checker and through the chat skill's
 lint, compares each result with what's expected, and checks that the Code tab's lint flags
 everything the checker does. Run it after changing either skill, its scripts or the tests, or
 after an app update.
