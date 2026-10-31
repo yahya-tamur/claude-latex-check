@@ -7,6 +7,11 @@ Work in a clone of the repository rather than an installed plugin folder, which 
 every update: `git clone https://github.com/yahya-tamur/claude-latex-check`, then `npm install` and
 `npm test`.
 
+The desktop app loads an account install as a session-only (inline) plugin, the same way
+`claude --plugin-dir` does, so both use the data folder `~/.claude/plugins/data/latex-check-inline`.
+Test runs with `--plugin-dir` therefore read and write the real local fixes and saved app
+location; don't delete that folder after testing.
+
 ## Curating fixes
 
 Each machine collects the fixes its sessions found in `fixes.local.md`, in the plugin's data folder
