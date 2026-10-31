@@ -5,7 +5,12 @@ tab), on claude.ai and in Cowork. It's one plugin, `latex-check`, with a skill f
 
 ## Installing
 
-**Claude Code**, in a terminal:
+**Desktop app and claude.ai:** open **Customize > Plugins** (in the desktop app: **File > Settings >
+Customize > Plugins**), choose **Add > Add marketplace**, enter `yahya-tamur/claude-latex-check`, and
+install `latex-check` from it. The install belongs to your account, so it covers the desktop app's
+Code tab, Cowork and claude.ai.
+
+**Claude Code in a terminal**, outside the desktop app, doesn't pick up that install. There, run:
 
 ```bash
 claude plugin marketplace add yahya-tamur/claude-latex-check
@@ -15,13 +20,7 @@ claude plugin marketplace add yahya-tamur/claude-latex-check
 claude plugin install latex-check@latex-check
 ```
 
-Or inside a session, `/plugin marketplace add yahya-tamur/claude-latex-check` and then
-`/plugin install latex-check@latex-check`. Update later with
-`claude plugin update latex-check@latex-check`.
-
-**claude.ai and Cowork:** in **Customize > Plugins**, choose **Add > Add marketplace**, enter
-`yahya-tamur/claude-latex-check`, and install `latex-check` from it. A plugin installed on your
-account also reaches Claude Code as `latex-check@synced`, so install it in one place or the other.
+and update later with `claude plugin update latex-check@latex-check`.
 
 The skills' short descriptions are always in context, and the rest loads only in sessions that
 involve math.
