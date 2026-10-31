@@ -1,6 +1,7 @@
 ---
 name: latex-check
 description: Write LaTeX math that renders in the Claude desktop app's Code tab, and check replies before sending. Use whenever a reply will contain math in $...$ or $$...$$.
+allowed-tools: Bash(node *) PowerShell(node *)
 ---
 
 # Math that renders in the Claude desktop app
