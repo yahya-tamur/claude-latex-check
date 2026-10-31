@@ -63,6 +63,7 @@ Node, and the check works in both. Where Node isn't available, Claude follows th
 | [`MAINTENANCE.md`](MAINTENANCE.md) | Where new rules come from, what to update when they change, and what the checker relies on in the app |
 | `tests/`, `test.mjs` | One test per kind of failure, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
 | `.claude-plugin/` | Plugin and marketplace manifests |
+| `icon.svg`, `icon.png` | The plugin's icon: the source, and the PNG the manifest points to |
 
 Per-machine files live in the plugin's data folder (`~/.claude/plugins/data/<id>/`), which
 survives plugin updates: `fixes.local.md` and jsdom.

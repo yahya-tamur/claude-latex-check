@@ -1,13 +1,14 @@
 {
   "name": "latex-check",
   "displayName": "LaTeX check",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Write LaTeX math that renders in Claude Code, claude.ai and Cowork, and check replies before sending: with the desktop app's own renderer in Claude Code, and with KaTeX elsewhere",
   "author": {
     "name": "yahya-tamur"
   },
   "repository": "https://github.com/yahya-tamur/claude-latex-check",
   "license": "MIT",
+  "icon": "./icon.png",
   "keywords": [
     "latex",
     "math",
