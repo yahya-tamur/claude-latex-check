@@ -15,19 +15,16 @@ The app guesses which spans are math, so valid TeX can still show as plain text,
 `$1/r$`, `$a \cdot b -$` or any inline span over 60 characters. The plugin has one skill,
 `latex-check`, which Claude loads whenever a reply will contain math. It has three parts:
 
-- **Short rules** for writing math that renders, in the skill itself, so Claude follows them from
-  the first draft.
+- **Rules** for writing math that renders, and how to fix each kind of formula that doesn't, in the
+  skill itself, so Claude follows them from the first draft.
 - **A checker**, `check.mjs`, that runs the installed app's own renderer (its markdown code,
   react-markdown and KaTeX) in a simulated browser (jsdom). Claude runs it on each reply with
   math before sending, and it reports every formula that would show as plain text or as a KaTeX
   error.
-- **Fixes:** when a check fails, Claude looks up the fix in [FIXES.md](FIXES.md) and rewrites
-  only the flagged formulas. It records each new fix in a `fixes.local.md` file on that machine,
-  and uses the working form from then on. You move those into FIXES.md over time (see
+- **Fixes:** when a check fails, Claude rewrites only the flagged formulas. It records each new fix
+  in a `fixes.local.md` file on that machine, and uses the working form from then on. You move
+  those into the skill over time (see
   [Curating fixes](#curating-fixes)).
-
-Claude talks about this only in plain terms, like "I rewrote a formula so it renders", without
-mentioning files or tools.
 
 ## Installing
 
@@ -59,11 +56,10 @@ claude plugin update latex-check@latex-check
 
 | File | What it is |
 |---|---|
-| [`skills/latex-check/SKILL.md`](skills/latex-check/SKILL.md) | The skill: short rules and how Claude checks and fixes replies |
-| [`FIXES.md`](FIXES.md) | Lookup of what each kind of failing span needs |
+| [`skills/latex-check/SKILL.md`](skills/latex-check/SKILL.md) | The skill: the rules, what to write when a formula fails, and how Claude checks replies |
 | [`check.mjs`](check.mjs), `env.mjs` | The checker |
 | [`MAINTENANCE.md`](MAINTENANCE.md) | How to repair the checker after an app update |
-| `tests/`, `test.mjs` | One test per rule in FIXES.md, plus `tests/short-rules.md`, a sample written by the short rules that must render fully |
+| `tests/`, `test.mjs` | One test per kind of failure in the skill, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
 | `.claude-plugin/` | Plugin and marketplace manifests |
 
 Per-machine files live in the plugin's data folder (`~/.claude/plugins/data/<id>/`), which
@@ -94,14 +90,15 @@ about 3 s, or 0.2 s for text with no math. `--flag off` simulates the app's inli
 flag being off; then only `$$` blocks render. The default is `on`.
 
 `npm test` runs all 25 cases in `tests/` (~75 s) and compares each result with what's expected.
-Run it after changing FIXES.md, the short rules, the tests or `check.mjs`, or after an app update.
+Run it after changing the skill, the tests or `check.mjs`, or after an app update.
 
 ## Curating fixes
 
 Claude never edits the plugin's files, so the rules and tests change only when you curate them.
 Every so often:
 
-1. Move entries from each machine's `fixes.local.md` (in the plugin's data folder) into FIXES.md.
+1. Move entries from each machine's `fixes.local.md` (in the plugin's data folder) into the skill's
+   "If a span is flagged" section.
 2. Check the examples with `node check.mjs`.
 3. Add a `tests/*.md` case, with its expected summary in `test.mjs`.
 4. If a new rule isn't already implied by the short rules in SKILL.md, update them, keeping them

@@ -24,18 +24,35 @@ it before sending.
 Also run this once per session, to see fixes found on this machine:
 `node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --show-fixes`
 
+## If a span is flagged
+
+Rewrite just that span:
+- **Over 60 characters:** split it into shorter spans joined by words, as in
+  `the sum of $u_{1} v_{1} + u_{2} v_{2}$ and $u_{3} v_{3}$`, or move it to a `$$` paragraph.
+- **Starts with a digit:** `$\frac{1}{r}$` or `$r^{-1}$` instead of `$1/r$`; `$2\,x$` instead of `$2x$`.
+- **Only plain letters** (`$xY$`, `$AB/B$`; a `/` doesn't count): add context, as in `$xY \in Z$` or
+  `$\bar{A} = AB/B$`.
+- **Starts with `(` or `[`:** put a name first, as in `$x = (x_{i})$` or `$n = [a:b]$`. Inside
+  brackets, write a colon as `\colon`: `$[A \colon B]$`. For a family, reword:
+  `choices $a_{B} \in A_{B}$`.
+- **Unbraced subscript or superscript:** `$A_{B}$`, `$x'^{n}$`.
+- **Ends with an operator:** complete the formula, as in `$c \mapsto a \cdot b \cdot c$`.
+- **Something touches a dollar:** curly quotes, as in `means “$f$ has property P”`; a non-breaking
+  hyphen, `word‑$k$`; or reword.
+- **Spans two lines, `$$` mid-sentence, or `\(...\)`:** follow the rules above.
+- **`KaTeX error`:** the TeX itself is invalid, such as a missing argument in `\frac{1}`. Fix the
+  syntax.
+
 ## Checking a reply
 
 1. Write the reply's markdown, exactly as it will be sent, to a temp file and run:
    `node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" <file>`
    Run it on its own, without `&&`, pipes or shell variables. It prints only failures plus a summary
-   line. Exit 0 = all math renders, 1 = something failed,
-   2 = the checker couldn't run. A check takes about 3 s, or 0.2 s without math. The first run on
-   a machine also installs one dependency and builds a cache, so it takes a bit longer.
+   line. Exit 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. A check
+   takes about 3 s, or 0.2 s without math. The first run on a machine also installs one dependency
+   and builds a cache, so it takes a bit longer.
 2. On `FAIL` lines, fix only the flagged spans:
-   - On the first failure in a session, read `${CLAUDE_PLUGIN_ROOT}/FIXES.md`, which lists what
-     each kind of failing span needs. Use what you've read for later failures; re-read only if a
-     fix doesn't work.
+   - Use "If a span is flagged" above, and the local fixes.
    - Edit each flagged span in the temp file in place. Don't regenerate the reply.
    - Re-run the checker on the edited file, then send that text.
 3. On exit 2, send the reply anyway and tell the user the math wasn't checked. Then:
@@ -53,8 +70,8 @@ ignore it. Don't read `check.mjs`, the tests or the app's files during normal us
 ## Learning from failures
 
 Each fail-and-retry round costs edits and a re-run, so don't hit the same failure twice:
-- When a `FAIL` gets fixed and the fix isn't already in FIXES.md or the local fixes, save it right
-  away: the form that failed, the form that rendered, and the rule if there is one.
+- When a `FAIL` gets fixed and the fix isn't already covered above or in the local fixes, save it
+  right away: the form that failed, the form that rendered, and the rule if there is one.
   `node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --add-fix "<entry>"`
   For example: `$1/r$` failed, `$\frac{1}{r}$` renders; digit-led spans need a TeX symbol.
 - Generalize when you can. Save "digit-led spans need a TeX symbol", not just the one formula.
@@ -67,9 +84,7 @@ Each fail-and-retry round costs edits and a re-run, so don't hit the same failur
 
 ## Talking to the user
 
-Keep all of this behind the scenes. Plain wording like "I rewrote a formula so it renders" or "I
-couldn't check the math rendering this time" is fine. Don't name the checker, its files, exit codes
-or the rules unless the user asks how it works.
+Don't mention the checker or these rules in replies unless the user asks.
 
 If the user reports that math didn't render as intended even though the checker passed it, or that
 it flagged math that does render, treat it as a bug in the checker and see
