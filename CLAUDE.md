@@ -4,31 +4,36 @@
 
 Read only this part unless the checker exits 2 or the user reports a rendering problem.
 
-1. Clone once to a stable place and reuse it in later sessions (e.g. `~/tools/claude-latex-check`),
-   then `npm install` there. Node 18+ and the Claude desktop app must be on the same machine.
-   Optionally run `npm test` once (~75 s, prints one line).
-2. Install the short rules once per machine. They're the block between the `short-rules` markers
-   at the top of `<repo>/FIXES.md`. If the user's global `~/.claude/CLAUDE.md` doesn't contain
-   that block, or holds an older copy, offer to add or update it there, with the markers. That file
-   is loaded into every turn of every session, so the rules can't fade from context the way a file
-   you read once can. Until it's installed, read the block yourself at the start of the session.
-3. Write math by the short rules from the start. Also read `<repo>/fixes.local.md`, if it exists,
+1. **Set up once per machine.**
+   - Clone to a stable place (e.g. `~/tools/claude-latex-check`) and run `npm install` there.
+     Node 18+ and the Claude desktop app must be on the same machine. Optionally run `npm test`
+     (~75 s, prints one line).
+   - Offer to add two things to the user's global `~/.claude/CLAUDE.md`, which is loaded into every
+     turn of every session in every folder. First, the block between the `short-rules` markers at
+     the top of `<repo>/FIXES.md`, markers included. Second, one line outside the markers:
+     ``Check replies containing math with `node <repo>/check.mjs`; see `<repo>/CLAUDE.md`.``
+   - If the block there differs from FIXES.md, offer to update it. Until it's installed, read the
+     block yourself at the start of each session.
+2. **Write math by the short rules from the start.** Read `<repo>/fixes.local.md`, if it exists,
    once per session. Don't read the rest of FIXES.md up front.
-4. For every reply containing LaTeX: write the reply's markdown, exactly as it will be sent, to a
-   temp file and run `node <repo>/check.mjs <file>`.
-5. On `FAIL` lines, fix only the flagged spans. Edit each span in the temp file in place, and don't
-   regenerate the reply. If the fix isn't obvious, look up that span's rule under "Looking up a fix"
-   in FIXES.md. Re-run the checker on the edited file, then send that text.
-6. Exit 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. On 2, send the
-   reply anyway, tell the user the math wasn't checked, and see "When it breaks" below.
+3. **Check every reply containing LaTeX.** Write the reply's markdown, exactly as it will be sent,
+   to a temp file and run `node <repo>/check.mjs <file>`. Exit 0 = all math renders, 1 = something
+   failed, 2 = the checker couldn't run. On 2, send the reply anyway, tell the user the math wasn't
+   checked, and see "When it breaks" below.
+4. **On `FAIL` lines, fix only the flagged spans.**
+   - On the first failure in a session, read "Looking up a fix" in FIXES.md and re-read
+     `fixes.local.md` before editing. On later failures, use what you've read; re-read only if a
+     fix doesn't work.
+   - Edit each flagged span in the temp file in place. Don't regenerate the reply.
+   - Re-run the checker on the edited file, then send that text.
 
 Talking to the user: keep all of this behind the scenes. Plain wording like "I rewrote a formula
 so it renders" or "I couldn't check the math rendering this time" is fine. Don't name FIXES.md,
 `fixes.local.md`, `check.mjs`, exit codes or the rules unless the user asks how it works. When
-offering step 2, say something like "Can I add a few math-formatting rules to your global Claude
-instructions (`~/.claude/CLAUDE.md`)?"
+offering the setup in step 1, say something like "Can I add a few math-formatting rules to your
+global Claude instructions (`~/.claude/CLAUDE.md`)?"
 
-Learn from every failure. Each fail-and-retry round costs a re-run and a rewrite, so don't hit the
+Learn from every failure. Each fail-and-retry round costs edits and a re-run, so don't hit the
 same failure twice:
 - When a `FAIL` gets fixed, append it right away to `<repo>/fixes.local.md` (create it if missing;
   git ignores it): the form that failed, the form that rendered, and the rule if there is one. For
@@ -44,15 +49,11 @@ same failure twice:
   those.
 
 Keeping token use low:
-- The short rules cost nothing extra once they're in the global CLAUDE.md. Read the rest of
-  FIXES.md only to look up a specific failure, and `fixes.local.md` once per session.
-- A retry should be a few small edits to the flagged spans, not a rewritten reply.
 - Run the checker once per finished draft, not per formula. Output is already minimal: only
   failures plus a summary line. A reply without math costs 0.2 s and prints `ok: no math`.
 - Don't read `check.mjs`, the tests or the app bundle during normal use.
 - Plain dollar amounts like "$5 and $10" are reported as failures; that's a known false positive.
   Ignore it.
-- Save "check LaTeX with <repo>/check.mjs" to memory so later sessions skip setup.
 
 ## When it breaks
 
@@ -88,9 +89,10 @@ keeping this pipeline but drawing the Code tab with a different one. Only `npm t
 the user sees in the real app catches that.
 
 Fixing, cheaply:
-- Bundle: `<resources>/ion-dist/assets/v1/` (Linux `/usr/lib/claude-desktop/resources`). Newer builds ship
-  `ion-dist.asar` instead; `check.mjs` unpacks it to `<cache>/asar-<hash>/ion-dist/`, so grep there. It has ~3,800
-  minified `.js` files, with single lines up to ~500 KB. Never print whole files or lines: use
+- Bundle: `<resources>/ion-dist/assets/v1/` (Linux `/usr/lib/claude-desktop/resources`). Newer
+  builds ship `ion-dist.asar` instead; `check.mjs` unpacks it to `<cache>/asar-<hash>/ion-dist/`,
+  so grep there. It has thousands of minified `.js` files, with single lines up to ~500 KB.
+  Never print whole files or lines: use
   `grep -l` to find files and `grep -oE '.{0,200}MARKER.{0,200}'` to see context. Pipe node errors
   through `cut -c1-300 | head`, because stack traces echo minified source lines.
 - Re-find the moved piece by searching for stable strings: `singleDollarTextMath`, `inlineGuard:`,
