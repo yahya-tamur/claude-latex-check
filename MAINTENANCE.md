@@ -29,6 +29,10 @@ Update everything that encodes them, in the skill you're changing:
 If `check.mjs`'s options change, update the commands written out in `skills/latex-check/SKILL.md`.
 Then run `npm test` and `claude plugin validate .`.
 
+Raise `version` in `.claude-plugin/plugin.json` for every change users should get. Command-line
+installs only update when it changes, and claude.ai's update check found nothing new before the
+plugin had one.
+
 ## What the checker relies on
 
 The checker runs the installed app's own code, so an app update can break it. Since it falls back
