@@ -49,7 +49,7 @@ Rewrite just that span:
    Run it on its own, without `&&`, pipes or shell variables. It prints only failures plus a summary
    line. Exit 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. A check
    takes about 3 s, or 0.2 s without math. The first run on a machine also installs one dependency
-   and builds a cache, so it takes a bit longer.
+   and searches the app's code, so it takes a bit longer.
 2. On `FAIL` lines, fix only the flagged spans:
    - Use "If a span is flagged" above, and the local fixes.
    - Edit each flagged span in the temp file in place. Don't regenerate the reply.

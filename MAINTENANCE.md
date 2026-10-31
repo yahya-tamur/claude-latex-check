@@ -38,9 +38,10 @@ The checker runs the installed app's own code, so an app update can break it. Si
 to the lint when that happens, users barely notice; run `npm test` after app updates to find out.
 
 The app's code is in `<resources>/ion-dist/assets/v1/`, or in `ion-dist.asar` in newer builds,
-which the checker unpacks into its cache. File names and minified identifiers change every build, so
-everything is found by content, and these are the heuristics to start from when something can't be
-found:
+which `bundle.mjs` reads in place. `hooks.mjs` serves those files to `import()` with the patches
+below applied in memory, and the per-version index in the cache folder records which files hold
+what. File names and minified identifiers change every build, so everything is found by content,
+and these are the heuristics to start from when something can't be found:
 
 | What | Found by | Used for |
 |---|---|---|

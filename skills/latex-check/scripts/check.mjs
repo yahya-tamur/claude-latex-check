@@ -18,18 +18,19 @@
 //
 // Environment overrides:
 //   CLAUDE_DESKTOP_RESOURCES  the app's resources folder, ahead of everything else
-//   LATEX_CHECK_CACHE         where the patched bundle copy is kept
+//   LATEX_CHECK_CACHE         where the per-version index of bundle files is kept
 //
 // Bundle file names and minified export names change between app versions, so modules are found
-// by what they contain and exports by what their code does.
-import { readFileSync, existsSync, mkdirSync, cpSync, writeFileSync, readdirSync, rmSync, openSync, readSync,
-  closeSync, statSync, renameSync, readlinkSync } from 'fs';
+// by what they contain and exports by what their code does. The app's code is read in place, from
+// ion-dist.asar or the ion-dist folder, and patched in memory: hooks.mjs serves it to import().
+import { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readlinkSync } from 'fs';
 import { createHash } from 'crypto';
 import { homedir } from 'os';
-import { join, dirname, relative } from 'path';
+import { join, dirname } from 'path';
 import { pathToFileURL, fileURLToPath } from 'url';
-import { createRequire } from 'module';
+import nodeModule, { createRequire } from 'module';
 import { spawnSync, execFileSync } from 'child_process';
+import { openBundle } from './bundle.mjs';
 
 const die = msg => { console.error(`claude-latex-check harness error: ${String(msg).slice(0, 500)}`); process.exit(2); };
 // Any crash is the harness's fault, not the reply's: keep it out of exit code 1.
@@ -39,39 +40,6 @@ process.on('unhandledRejection', e => die(e?.stack ?? e));
 const home = homedir(), env = process.env;
 const ls = d => { try { return readdirSync(d); } catch { return []; } };
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// Files the checker never loads, by path inside the bundle: icons, images, fonts and stylesheets
-// (it inspects the rendered HTML, not how it looks), and the translations, sounds and wasm. The
-// app requests those by absolute URL ("/i18n/...", "/assets/v1/x.wasm"), which resolves against
-// the claude.ai page URL or the filesystem root here, never this copy.
-const unused = /(^|[\\/])i18n([\\/]|$)|\.(svg|png|webp|jpe?g|gif|ico|woff2?|ttf|otf|eot|css|mp3|wasm)$/i;
-
-// Newer builds pack ion-dist into ion-dist.asar: unpack it, minus unused files, into out.
-function unpackAsar(archive, out) {
-  // Format: [4][header pickle size] [4][payload size][4][json length][json] then file data.
-  const fd = openSync(archive, 'r');
-  const head = Buffer.alloc(16);
-  readSync(fd, head, 0, 16, 0);
-  const json = Buffer.alloc(head.readUInt32LE(12));
-  readSync(fd, json, 0, json.length, 16);
-  const base = 8 + head.readUInt32LE(4);
-  (function walk(node, rel) {
-    mkdirSync(join(out, rel), { recursive: true });
-    for (const [name, e] of Object.entries(node.files)) {
-      const r = join(rel, name);
-      if (unused.test(r)) continue;
-      if (e.files) walk(e, r);
-      else if (e.link) continue;
-      else if (e.unpacked) cpSync(join(`${archive}.unpacked`, r), join(out, r));
-      else {
-        const buf = Buffer.alloc(e.size);
-        if (e.size) readSync(fd, buf, 0, e.size, base + Number(e.offset));
-        writeFileSync(join(out, r), buf);
-      }
-    }
-  })(JSON.parse(json.toString('utf8')), 'ion-dist');
-  closeSync(fd);
-}
-
 const args = process.argv.slice(2);
 let flag = 'on', file, dataDir;
 let showFixes = false, addFix, surface = 'code';
@@ -125,14 +93,8 @@ function runningApp() {
   } catch {}
   return [];
 }
-// The app's web UI bundle: <ion-dist>/assets/<v>/ holding the .js chunks.
-function assetsIn(ionDist) {
-  const assets = join(ionDist, 'assets');
-  const v = ls(assets).find(d => ls(join(assets, d)).some(f => f.startsWith('vendor-frame-')));
-  return v && join(assets, v);
-}
-// The app's ion-dist, as { copy: folder } or { asar: archive }, plus a key that changes with
-// every app version.
+// The app's ion-dist: { root, key }, root being the ion-dist folder or ion-dist.asar, and key
+// changing with every app version.
 function appBundle() {
   const sha = s => createHash('sha1').update(s).digest('hex').slice(0, 12);
   const found = env.CLAUDE_DESKTOP_RESOURCES ? [env.CLAUDE_DESKTOP_RESOURCES] : [...runningApp(), ...{
@@ -147,10 +109,9 @@ function appBundle() {
   }[process.platform] ?? []];
   const resources = [...new Set(found)];
   for (const r of resources) {
-    const copy = join(r, 'ion-dist'), asar = join(r, 'ion-dist.asar');
-    const assets = assetsIn(copy);
-    if (assets) return { copy, key: sha(ls(assets).filter(f => f.endsWith('.js')).sort().join()) };
-    if (existsSync(asar)) { const st = statSync(asar); return { asar, key: sha(`${asar}:${st.size}:${st.mtimeMs}`) }; }
+    const folder = join(r, 'ion-dist'), asar = join(r, 'ion-dist.asar');
+    if (existsSync(join(folder, 'assets'))) return { root: folder, key: sha(ls(join(folder, 'assets')).flatMap(v => ls(join(folder, 'assets', v))).sort().join()) };
+    if (existsSync(asar)) { const st = statSync(asar); return { root: asar, key: sha(`${asar}:${st.size}:${st.mtimeMs}`) }; }
   }
   die(`Claude desktop app bundle not found (looked in: ${resources.join(', ') || 'nothing for ' + process.platform}).`);
 }
@@ -168,45 +129,56 @@ const prose = text.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, '');
 const hasDelimiters = /\$|\\\(|\\\[/.test(prose);
 if (!hasDelimiters && !/\\[a-zA-Z]{2,}/.test(prose)) { console.log('ok: no math'); process.exit(0); }
 
-// One patched copy of the app's ion-dist per app version, minus unused files. It's built in a
-// .tmp folder and renamed when complete, so an interrupted build is never used.
 const app = appBundle();
-const cacheDir = join(cacheRoot, app.key);
-const fresh = !existsSync(join(cacheDir, '.ok'));
-const buildDir = fresh ? `${cacheDir}.tmp` : cacheDir;
-if (fresh) {
-  // Copies for older app versions are dead weight (~150 MB each).
-  for (const d of ls(cacheRoot)) rmSync(join(cacheRoot, d), { recursive: true, force: true });
-  if (app.asar) unpackAsar(app.asar, buildDir);
-  else cpSync(app.copy, join(buildDir, 'ion-dist'), { recursive: true, filter: f => !unused.test(relative(app.copy, f)) });
-}
-let dir = assetsIn(join(buildDir, 'ion-dist')) ?? die(`no app bundle in ${app.asar ?? app.copy}`);
-const jsFiles = readdirSync(dir).filter(f => f.endsWith('.js'));
-const read = (dir, f) => readFileSync(join(dir, f), 'utf8');
-function findFile(marker) {
-  const has = s => (marker instanceof RegExp ? marker.test(s) : s.includes(marker));
-  const hits = jsFiles.filter(f => has(read(dir, f)));
-  if (hits.length !== 1) die(`expected one bundle file containing ${marker}, found ${hits.length}`);
-  return hits[0];
-}
-const files = {
-  renderer: findFile('guardedInline:'),              // Code-tab markdown hook (math gating + plugins)
-  preload: findFile('=function(e,t,n){let r=globalThis.__antChunkLoadCtx'),  // vite chunk preloader
-  react: findFile('e.createRoot=function'),          // react + react-dom
-  markdown: findFile(/\.runSync\([\w$]+\.parse\(/),  // react-markdown
-};
+const bundle = openBundle(app.root);
+// The web UI's chunks: <ion-dist>/assets/<v>/*.js.
+const assets = (v => v && `assets/${v}`)(bundle.list('assets').find(d => bundle.list(`assets/${d}`).some(f => f.startsWith('vendor-frame-'))))
+  ?? die(`no app bundle in ${app.root}`);
+const jsFiles = bundle.list(assets).filter(f => f.endsWith('.js'));
+const read = f => bundle.read(`${assets}/${f}`);
 
+// Which chunks hold what the checker needs. Finding them means reading every chunk, so the result
+// is saved per app version, in a small index in the cache folder, once a run has fully succeeded.
+const gbRe = /if\(!([\w$]+)\)throw [\w$]+\(Error\("Missing or invalid GrowthBookProvider"\)[^;]*;/;
+const markers = {
+  renderer: ['guardedInline:', s => s.includes('guardedInline:')],      // Code-tab markdown hook (math gating + plugins)
+  preload: ['the chunk preloader', s => s.includes('=function(e,t,n){let r=globalThis.__antChunkLoadCtx')],  // vite chunk preloader
+  react: ['e.createRoot=function', s => s.includes('e.createRoot=function')],  // react + react-dom
+  markdown: ['.runSync(x.parse(', s => /\.runSync\([\w$]+\.parse\(/.test(s)],  // react-markdown
+  growthBook: ['the GrowthBook provider check', s => gbRe.test(s)],      // feature flags
+  chat: ['the chat markdown component', s => s.includes('inHouseLatexPlugin:') && s.includes('normalizationMode:')],
+};
+const indexPath = join(cacheRoot, `${app.key}.json`);
+let index;
+try { index = JSON.parse(readFileSync(indexPath, 'utf8')); } catch {}
+const fresh = !index;
 if (fresh) {
-  const patch = (name, re, to, what) => {
-    const s = read(dir, name);
-    if (!re.test(s)) die(`can't ${what} in ${name}`);
-    writeFileSync(join(dir, name), s.replace(re, to));
-  };
+  index = Object.fromEntries(Object.keys(markers).map(k => [k, []]));
+  for (const f of jsFiles) {
+    const s = read(f);
+    for (const [k, [, test]] of Object.entries(markers)) if (test(s)) index[k].push(f);
+  }
+  for (const k of ['renderer', 'preload', 'react', 'markdown']) {
+    if (index[k].length !== 1) die(`expected one bundle file containing ${markers[k][0]}, found ${index[k].length}`);
+    index[k] = index[k][0];
+  }
+  if (!index.growthBook.length) die('GrowthBook provider check not found');
+}
+const files = index;
+
+// Patches, applied in memory as hooks.mjs serves the chunks: { "assets/<v>/<file>": source }.
+const patched = {};
+const patch = (name, re, to, what) => {
+  const s = patched[`${assets}/${name}`] ?? read(name);
+  if (!re.test(s)) die(`can't ${what} in ${name}`);
+  patched[`${assets}/${name}`] = s.replace(re, to);
+};
+{
   // Make the inline-math flag follow --flag (a global set below). Older builds: the hook does `x=<flagFn>(),{display:...}=...`.
   // Newer builds: `x=<flagFn>()` in the hook, then x is passed as the second argument to the
   // function that returns {display, guardedInline, ...}.
   const flagFn = (() => {
-    const s = read(dir, files.renderer);
+    const s = read(files.renderer);
     const direct = s.match(/([\w$]+)=([\w$]+)\(\),\{display:/)?.[2];
     if (direct) return direct;
     const gates = [...s.matchAll(/function ([\w$]+)\([\w$]+,[\w$]+\)\{[^{}]*return\{display:[^{}]*guardedInline:/g)];
@@ -221,21 +193,18 @@ if (fresh) {
   patch(files.renderer, new RegExp(`function ${escapeRe(flagFn)}\\(\\)\\{(?:[^{}]|\\{[^{}]*\\})*\\}`),
     `function ${flagFn}(){return globalThis.__latexCheckInlineMath!==!1}`, 'pin the inline-math flag');
   // No GrowthBook provider outside the app: treat every other flag as absent instead of throwing.
-  const gbRe = /if\(!([\w$]+)\)throw [\w$]+\(Error\("Missing or invalid GrowthBookProvider"\)[^;]*;/;
-  const gbFiles = jsFiles.filter(f => gbRe.test(read(dir, f)));
-  if (!gbFiles.length) die('GrowthBook provider check not found');
-  for (const f of gbFiles)
+  for (const f of files.growthBook)
     patch(f, gbRe, 'if(!$1)return{on:!1,off:!0,value:null,source:"unknownFeature"};', 'stub GrowthBook');
   // Vite's preloader waits on <link> loads that never fire in jsdom: export a pass-through instead.
-  const preloadFn = read(dir, files.preload).match(/([\w$]+)=function\(e,t,n\)\{let r=globalThis\.__antChunkLoadCtx/)?.[1]
+  const preloadFn = read(files.preload).match(/([\w$]+)=function\(e,t,n\)\{let r=globalThis\.__antChunkLoadCtx/)?.[1]
     ?? die('chunk preloader not found');
   patch(files.preload, new RegExp(`export\\{([^}]*)\\b${escapeRe(preloadFn)} as `),
     'const __pass=f=>f();export{$1__pass as ', 'replace the chunk preloader');
-  writeFileSync(join(dir, 'package.json'), '{"type":"module"}');
-  writeFileSync(join(buildDir, '.ok'), '');
-  renameSync(buildDir, cacheDir);
-  dir = assetsIn(join(cacheDir, 'ion-dist'));
 }
+// Serve the bundle's chunks to import() under file URLs inside the bundle.
+const prefix = pathToFileURL(app.root).href + '/';
+if (!nodeModule.register) die(`needs Node 18.19 or newer for module loader hooks, found ${process.version}`);
+nodeModule.register('./hooks.mjs', import.meta.url, { data: { prefix, root: app.root, patched } });
 
 // jsdom: the repo's own node_modules in a dev checkout, else the data folder (installed there once).
 // Only these exact folders count: Node's normal lookup would also take a jsdom of any version from
@@ -263,7 +232,8 @@ setupBrowser(loadJsdom().JSDOM);
 const quiet = console.log;
 console.log = console.warn = console.info = console.debug = () => {};
 // [exportName, fn] pairs of a bundle file.
-const load = async f => Object.entries(await import(pathToFileURL(join(dir, f)).href)).filter(([, v]) => typeof v === 'function');
+const chunk = f => import(`${prefix}${assets}/${f}`);
+const load = async f => Object.entries(await chunk(f)).filter(([, v]) => typeof v === 'function');
 const src = f => Function.prototype.toString.call(f);
 const passes = (test, f) => { try { return test(f); } catch { return false; } };
 // A unique pattern match can still be the wrong function after an update, so React pieces are
@@ -290,8 +260,7 @@ const [, ReactMarkdown] = pickOne(await load(files.markdown),
 // markdown component (memo-wrapped, takes `text`, sets up the same in-house LaTeX plugin itself).
 let ChatMarkdown;
 if (surface === 'chat') {
-  const chatFiles = jsFiles.filter(f => { const s = read(dir, f); return s.includes('inHouseLatexPlugin:') && s.includes('normalizationMode:'); });
-  const memos = (await Promise.all(chatFiles.map(f => import(pathToFileURL(join(dir, f)).href))))
+  const memos = (await Promise.all(files.chat.map(chunk)))
     .flatMap(m => Object.entries(m)).filter(([, v]) => v?.$$typeof === Symbol.for('react.memo') && typeof v.type === 'function');
   [, ChatMarkdown] = pickOne(memos.map(([k, v]) => [k, v]),
     v => src(v.type).includes('inHouseLatexPlugin:') && src(v.type).includes('normalizationMode:'), 'chat markdown component');
@@ -300,14 +269,13 @@ console.log = quiet;
 
 // Wiring check, once per app version: some component must still call this hook the way the Code
 // tab transcript does, hook(text, "chat", true, ...). Otherwise the app has moved to another renderer.
-if (!existsSync(join(dir, '.wired'))) {
+if (fresh) {
   const importRe = new RegExp(`import\\{[^}]*\\b${escapeRe(hookName)} as ([\\w$]+)[^}]*\\}from"\\./${escapeRe(files.renderer)}"`);
   const wired = jsFiles.some(f => {
-    const s = read(dir, f), alias = s.match(importRe)?.[1];
+    const s = read(f), alias = s.match(importRe)?.[1];
     return alias && new RegExp(`(?<![\\w$.])${escapeRe(alias)}\\([\\w$]+,"chat",!0[,)]`).test(s);
   });
   if (!wired) die('no app component calls the markdown hook as hook(text, "chat", true) any more');
-  writeFileSync(join(dir, '.wired'), '');
 }
 
 // Render markdown the way the transcript's text component does: hook(text, "chat", true).
@@ -331,6 +299,12 @@ async function render(md, waitForMath) {
 const canary = await render('Canary $a^2$ inline.\n\n$$b^2$$\n', true);
 const canaryMath = [...canary.querySelectorAll('.katex annotation')].map(e => e.textContent.trim()).join(' ');
 if (canaryMath !== (flag === 'on' || surface === 'chat' ? 'a^2 b^2' : 'b^2')) die(`canary rendered [${canaryMath}]; the pipeline no longer works`);
+if (fresh) {
+  // Everything checked out: save the index, replacing whatever older app versions left.
+  for (const d of ls(cacheRoot)) rmSync(join(cacheRoot, d), { recursive: true, force: true });
+  mkdirSync(cacheRoot, { recursive: true });
+  writeFileSync(indexPath, JSON.stringify(index));
+}
 
 const el = await render(text, false);
 if (!el.textContent.trim() && text.trim()) die('renderer produced no output');

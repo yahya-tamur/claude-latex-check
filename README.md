@@ -27,7 +27,7 @@ involve math.
 
 ## In Claude Code
 
-Needs Node 18+ and the Claude desktop app on the same machine. The Code tab guesses which spans are
+Needs Node 18.19+ and the Claude desktop app on the same machine. The Code tab guesses which spans are
 math, so valid TeX can still show as plain text, for example `$1/r$`, `$a \cdot b -$` or any
 inline span over 60 characters. The `latex-check` skill has three parts:
 
@@ -36,9 +36,9 @@ inline span over 60 characters. The `latex-check` skill has three parts:
 - **A checker**, `scripts/check.mjs`, that runs the installed app's own renderer (its markdown code,
   react-markdown and KaTeX) in a simulated browser (jsdom). Claude runs it on each reply with math
   before sending, and it reports every formula that would show as plain text or with an error. The
-  first check on a machine installs jsdom and builds a cache, so it takes a bit longer. If the
-  checker can't run, for example after an app update, Claude checks with the skill's `lint.mjs`
-  instead, against the rules and KaTeX.
+  first check on a machine installs jsdom, and the first for each app version searches the app's
+  code, so those take a bit longer. If the checker can't run, for example after an app update,
+  Claude checks with the skill's `lint.mjs` instead, against the rules and KaTeX.
 - **Fixes:** when a check fails, Claude rewrites only the flagged formulas, and records each new fix
   in a `fixes.local.md` file on that machine, so it doesn't repeat the mistake.
 
@@ -58,7 +58,7 @@ Node, and the check works in both. Where Node isn't available, Claude follows th
 
 | File | What it is |
 |---|---|
-| [`skills/latex-check/`](skills/latex-check) | The Claude Code skill: rules, fixes for failing formulas, and how Claude checks replies. Its `scripts/` holds the checker (`check.mjs`, `env.mjs`) and `lint.mjs`, which checks a draft against the rules and KaTeX without the app, the fallback when the checker breaks |
+| [`skills/latex-check/`](skills/latex-check) | The Claude Code skill: rules, fixes for failing formulas, and how Claude checks replies. Its `scripts/` holds the checker (`check.mjs`, plus `env.mjs`, `bundle.mjs` and `hooks.mjs`) and `lint.mjs`, which checks a draft against the rules and KaTeX without the app, the fallback when the checker breaks |
 | [`skills/latex-check-chat/`](skills/latex-check-chat) | The claude.ai and Cowork skill. Its `scripts/` holds `lint.mjs`, which checks a draft against this skill's rules and KaTeX, the bundled KaTeX, and `math-spans.mjs`, which both skills' `lint.mjs` use to find and check formulas |
 | [`MAINTENANCE.md`](MAINTENANCE.md) | Where new rules come from, what to update when they change, and what the checker relies on in the app |
 | `tests/`, `test.mjs` | One test per kind of failure, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
@@ -113,18 +113,18 @@ rely on a fixed list. It looks in this order:
 `CLAUDE_DESKTOP_RESOURCES` overrides both. If the app isn't found, Claude checks with `lint.mjs`
 instead.
 
-The first run for each app version copies the app's code into a cache, unpacking it from
-`ion-dist.asar` in newer builds, and patches it. It leaves out icons, fonts, stylesheets,
-translations, sounds and wasm, which the checker never loads, and removes the copy for the
-previous version. Expect about 140 MB.
-Cache locations: `~/.cache/claude-latex-check` (Linux, or `$XDG_CACHE_HOME`),
+The checker reads the app's code where it is installed, from `ion-dist.asar` in newer builds or
+the `ion-dist` folder in older ones, without unpacking or copying it. The first run for each app
+version searches it for the files the checker needs and saves their names in a small index, under
+1 KB, replacing the one for the previous version. Index locations: `~/.cache/claude-latex-check` (Linux, or `$XDG_CACHE_HOME`),
 `~/Library/Caches/claude-latex-check` (macOS), `%LOCALAPPDATA%\claude-latex-check` (Windows).
 Override with `LATEX_CHECK_CACHE`.
 
 ## How the checker works
 
 `check.mjs` finds the pieces of the app's code it needs by their content, since file and function
-names change with every build, and patches a few browser-only parts in its copy. Then it renders
+names change with every build, and patches a few browser-only parts in memory: Node module loader hooks (`hooks.mjs`) serve the
+app's files to the checker straight from the install, patched. Then it renders
 the reply the way the Code tab's transcript does and inspects the result. Several checks, including
 a render of known math on every run, make it exit 2 rather than give a wrong verdict when an app
 update changes something; Claude then falls back to the lint. Report such breakage on the
