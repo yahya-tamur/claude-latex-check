@@ -143,3 +143,7 @@ So that a wrong match can't produce wrong results:
 - Every run starts with a canary render of known math.
 
 Any of these failing exits 2.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -6,5 +6,11 @@
     "name": "yahya-tamur"
   },
   "repository": "https://github.com/yahya-tamur/claude-latex-check",
-  "keywords": ["latex", "math", "katex", "rendering"]
+  "license": "MIT",
+  "keywords": [
+    "latex",
+    "math",
+    "katex",
+    "rendering"
+  ]
 }
