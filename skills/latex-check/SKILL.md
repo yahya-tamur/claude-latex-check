@@ -39,7 +39,6 @@ Rewrite just that span:
 - **Ends with an operator:** complete the formula, as in `$c \mapsto a \cdot b \cdot c$`.
 - **Something touches a dollar:** curly quotes, as in `means “$f$ has property P”`; a non-breaking
   hyphen, `word‑$k$`; or reword.
-- **Spans two lines, `$$` mid-sentence, or `\(...\)`:** follow the rules above.
 - **`KaTeX error`:** the TeX itself is invalid, such as a missing argument in `\frac{1}`. Fix the
   syntax.
 
@@ -84,7 +83,7 @@ Each fail-and-retry round costs edits and a re-run, so don't hit the same failur
   `a`, `b`, "property P") while keeping whatever the rule depends on: length, first and last
   character, operators, and what touches the dollars. Run both anonymized forms through the checker
   to confirm the failing one still fails and the fixed one still renders.
-- Don't edit the plugin's own files, and don't offer to. The user curates the rules and tests.
+- Don't edit the installed plugin's files; they're replaced on every update.
 
 ## Talking to the user
 

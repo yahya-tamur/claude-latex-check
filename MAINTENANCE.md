@@ -1,8 +1,7 @@
 # Maintaining the checker
 
 For anyone repairing the checker: the maintainer, Claude sessions working in this repository, or a
-user fixing it on their own machine. By default the skill suggests a plugin update or a GitHub
-issue when the checker breaks, and points here only if the user wants to fix it themselves.
+user fixing it on their own machine.
 
 Work in a clone of the repository rather than an installed plugin folder, which is replaced on
 every update: `git clone https://github.com/yahya-tamur/claude-latex-check`, then `npm install` and
@@ -53,13 +52,14 @@ user sees in the real app catches that.
 - Re-find the moved piece by searching for stable strings: `singleDollarTextMath`, `inlineGuard:`,
   `rehypePlugins:`, `katex`, `remarkMath`. The Code tab's transcript component calls
   `hook(text, "chat", true, smartQuotes)` and passes the result to react-markdown.
-- Trap: there are several markdown renderers. `ChatMarkdown` (claude.ai chat view, custom parser)
-  isn't the Code tab's. Make sure you're using the one the Code tab transcript uses.
+- Trap: there are several markdown renderers. The claude.ai and Cowork chat view uses a different
+  react-markdown setup (and contains a dormant `ChatMarkdown` renderer). Make sure you're using the
+  one the Code tab transcript uses.
 - Don't try to read the real value of the app's inline-math feature flag; it can't be read without
   the user's account data. The checker assumes "on", which matched what the user saw.
 - Update the marker or pattern in `check.mjs`, then run `npm test`. If an expected summary changes,
-  the app's math rules may really have changed. Ask the user to send the test text in the app and
-  look before you change any expectation.
+  the app's math rules may really have changed. Check how the test text renders in the app before
+  you change any expectation.
 
 ## If it can't be patched
 
