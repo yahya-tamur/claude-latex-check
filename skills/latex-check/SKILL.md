@@ -68,7 +68,8 @@ Rewrite just that span:
      `claude plugin update latex-check@latex-check`, since a fix may already be published. If it
      still fails after updating, suggest reporting it at
      https://github.com/yahya-tamur/claude-latex-check/issues with the error message. If the user
-     wants to repair it themselves, `${CLAUDE_PLUGIN_ROOT}/MAINTENANCE.md` explains how.
+     wants to repair it themselves, `${CLAUDE_PLUGIN_ROOT}/MAINTENANCE.md` lists what the checker relies
+     on in the app.
 
 Plain dollar amounts like "$5 and $10" are reported as failures. That's a known false positive;
 ignore it. Don't read `check.mjs`, the tests or the app's files during normal use.

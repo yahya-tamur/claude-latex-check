@@ -58,7 +58,7 @@ the check works in both. Where Node isn't available, Claude follows the rules al
 |---|---|
 | [`skills/latex-check/`](skills/latex-check) | The Claude Code skill: rules, fixes for failing formulas, and how Claude checks replies. Its `scripts/` holds the checker (`check.mjs`, `env.mjs`) and `lint.mjs`, which checks a draft against the rules and KaTeX without the app, the fallback when the checker breaks |
 | [`skills/latex-check-chat/`](skills/latex-check-chat) | The claude.ai and Cowork skill. Its `scripts/` holds `lint.mjs`, which checks a draft against this skill's rules and KaTeX, the bundled KaTeX, and `math-spans.mjs`, which both skills' `lint.mjs` use to find and check formulas |
-| [`MAINTENANCE.md`](MAINTENANCE.md) | Curating the rules from local fixes, and repairing the checker after an app update |
+| [`MAINTENANCE.md`](MAINTENANCE.md) | Where new rules come from, what to update when they change, and what the checker relies on in the app |
 | `tests/`, `test.mjs` | One test per kind of failure, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
 | `.claude-plugin/` | Plugin and marketplace manifests |
 
@@ -97,7 +97,8 @@ Run it after changing the skill, the tests or `check.mjs`, or after an app updat
 
 App updates can break the checker. Report problems on the
 [issues page](https://github.com/yahya-tamur/claude-latex-check/issues); fixes go out to everyone
-through plugin updates. [MAINTENANCE.md](MAINTENANCE.md) explains how to repair it yourself.
+through plugin updates. [MAINTENANCE.md](MAINTENANCE.md) lists what the checker relies on in the
+app, for repairing it yourself.
 
 ## Finding the desktop app
 
