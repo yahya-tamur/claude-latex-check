@@ -50,7 +50,7 @@ mid-sentence and `$...$` split across lines.
 The checker needs the desktop app, so it can't run there. The `latex-check-chat` skill covers what
 does go wrong instead: three short rules, and a script that runs each formula through KaTeX
 (bundled, MIT, the version the app ships) and needs only Node. claude.ai's sandbox has Node, and the
-check works there; Cowork hasn't been tried yet. Where Node isn't available, Claude follows the
+check works there; in Cowork the skill loads too. Where Node isn't available, Claude follows the
 rules alone.
 
 ## Where things are
