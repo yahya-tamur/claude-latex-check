@@ -33,7 +33,7 @@ inline span over 60 characters. The `latex-check` skill has three parts:
 
 - **Rules** for writing math that renders, and how to fix each kind of formula that doesn't, so
   Claude follows them from the first draft.
-- **A checker**, `check.mjs`, that runs the installed app's own renderer (its markdown code,
+- **A checker**, `scripts/check.mjs`, that runs the installed app's own renderer (its markdown code,
   react-markdown and KaTeX) in a simulated browser (jsdom). Claude runs it on each reply with math
   before sending, and it reports every formula that would show as plain text or with an error. The
   first check on a machine installs jsdom and builds a cache, so it takes a bit longer.
@@ -56,10 +56,8 @@ the check works in both. Where Node isn't available, Claude follows the rules al
 
 | File | What it is |
 |---|---|
-| [`skills/latex-check/`](skills/latex-check) | The Claude Code skill: rules, fixes for failing formulas, and how Claude checks replies |
-| [`skills/latex-check-chat/`](skills/latex-check-chat) | The claude.ai and Cowork skill, with its KaTeX script and the bundled KaTeX |
-| [`check.mjs`](check.mjs), `env.mjs` | The Claude Code checker |
-| [`lint.mjs`](lint.mjs) | Checks a draft against the Claude Code rules and KaTeX without the app; the fallback when the checker breaks |
+| [`skills/latex-check/`](skills/latex-check) | The Claude Code skill: rules, fixes for failing formulas, and how Claude checks replies. Its `scripts/` holds the checker (`check.mjs`, `env.mjs`) and `lint.mjs`, which checks a draft against the rules and KaTeX without the app, the fallback when the checker breaks |
+| [`skills/latex-check-chat/`](skills/latex-check-chat) | The claude.ai and Cowork skill. Its `scripts/` holds `lint.mjs`, which checks a draft against this skill's rules and KaTeX, the bundled KaTeX, and `math-spans.mjs`, which both skills' `lint.mjs` use to find and check formulas |
 | [`MAINTENANCE.md`](MAINTENANCE.md) | Curating the rules from local fixes, and repairing the checker after an app update |
 | `tests/`, `test.mjs` | One test per kind of failure, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
 | `.claude-plugin/` | Plugin and marketplace manifests |
@@ -73,14 +71,14 @@ In a clone of this repository:
 
 ```bash
 npm install
-node check.mjs tests/short-rules.md
+node skills/latex-check/scripts/check.mjs tests/short-rules.md
 ```
 
 The second command should print `ok: 17 rendered`. That confirms that the checker works with your
 app version and that the skill's rules still produce math that renders.
 
-To check a draft, run `node check.mjs reply.md`, or pipe the text in on stdin. Only problems are
-printed:
+To check a draft, run `node skills/latex-check/scripts/check.mjs reply.md`, or pipe the text in on
+stdin. Only problems are printed:
 
 ```
 FAIL  shown as text: $1/r$
@@ -89,8 +87,8 @@ FAIL  shown as text: $1/r$
 
 Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. A check takes
 about 3 s, or 0.2 s for text with no math. `--flag off` simulates the app's inline-math feature
-flag being off; then only `$$` blocks render. The default is `on`. The chat skill's KaTeX check
-runs the same way: `node skills/latex-check-chat/scripts/katex-check.mjs reply.md`.
+flag being off; then only `$$` blocks render. The default is `on`. The chat skill's check, its
+own `lint.mjs`, runs the same way: `node skills/latex-check-chat/scripts/lint.mjs reply.md`.
 
 `npm test` runs all 25 cases in `tests/` (~75 s) and compares each result with what's expected.
 Run it after changing the skill, the tests or `check.mjs`, or after an app update.

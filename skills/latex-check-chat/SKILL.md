@@ -21,7 +21,7 @@ session, follow these rules in every reply that contains math, and check it befo
 
 Write the reply's markdown, exactly as it will be sent, to a temp file and run the script in this
 skill's `scripts` folder:
-`node ${CLAUDE_SKILL_DIR}/scripts/katex-check.mjs <file>`
+`node ${CLAUDE_SKILL_DIR}/scripts/lint.mjs <file>`
 (If `${CLAUDE_SKILL_DIR}` isn't filled in, use the path of this skill's folder.) Run it on its own,
 without `&&` or pipes. It prints only problems plus a summary line. Exit 0 = fine, 1 = something
 failed, 2 = it couldn't run.

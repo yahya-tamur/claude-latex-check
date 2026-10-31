@@ -22,7 +22,7 @@ it before sending.
   straight quote or hyphen touching a `$`: use “curly quotes” or a non-breaking hyphen (U+2011).
 
 Also run this once per session, to see fixes found on this machine:
-`node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --show-fixes`
+`node "${CLAUDE_SKILL_DIR}/scripts/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --show-fixes`
 
 ## If a span is flagged
 
@@ -45,7 +45,7 @@ Rewrite just that span:
 ## Checking a reply
 
 1. Write the reply's markdown, exactly as it will be sent, to a temp file and run:
-   `node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" <file>`
+   `node "${CLAUDE_SKILL_DIR}/scripts/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" <file>`
    Run it on its own, without `&&`, pipes or shell variables. It prints only failures plus a summary
    line. Exit 0 = all math renders, 1 = something failed, 2 = the checker couldn't run. A check
    takes about 3 s, or 0.2 s without math. The first run on a machine also installs one dependency
@@ -57,12 +57,12 @@ Rewrite just that span:
 3. On exit 2, send the reply anyway, written by the rules, and handle it like this:
    - If the message says the app wasn't found, find the app's resources folder (the one containing
      `ion-dist` or `ion-dist.asar`; it varies by platform, store and version). Save it with
-     `node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --set-app-path "<path>"`.
+     `node "${CLAUDE_SKILL_DIR}/scripts/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --set-app-path "<path>"`.
      The checker replaces version numbers in folder names with `*` itself, so the location keeps
      working after updates.
    - Otherwise, an app update has probably broken the checker. For the rest of the session, check
      replies with the rules lint instead, which needs no app and also catches KaTeX errors:
-     `node "${CLAUDE_PLUGIN_ROOT}/lint.mjs" <file>`
+     `node "${CLAUDE_SKILL_DIR}/scripts/lint.mjs" <file>`
      Fix flagged spans the same way. It's stricter than the app, so it may flag formulas that would
      render. Tell the user once that the full check isn't working, and suggest
      `claude plugin update latex-check@latex-check`, since a fix may already be published. If it
@@ -78,7 +78,7 @@ ignore it. Don't read `check.mjs`, the tests or the app's files during normal us
 Each fail-and-retry round costs edits and a re-run, so don't hit the same failure twice:
 - When a `FAIL` gets fixed and the fix isn't already covered above or in the local fixes, save it
   right away: the form that failed, the form that rendered, and the rule if there is one.
-  `node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --add-fix "<entry>"`
+  `node "${CLAUDE_SKILL_DIR}/scripts/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --add-fix "<entry>"`
   For example: `$1/r$` failed, `$\frac{1}{r}$` renders; digit-led spans need a TeX symbol.
 - Generalize when you can. Save "digit-led spans need a TeX symbol", not just the one formula.
 - Anonymize entries. The file may be shared or published, so it must not reveal what the

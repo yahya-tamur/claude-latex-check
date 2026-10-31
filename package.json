@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Check that LaTeX in a markdown reply renders as math in the Claude desktop app's Code tab",
   "scripts": {
-    "check": "node check.mjs",
+    "check": "node skills/latex-check/scripts/check.mjs",
     "test": "node test.mjs"
   },
   "engines": {

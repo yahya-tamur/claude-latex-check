@@ -19,12 +19,13 @@ Each machine collects the fixes its sessions found in `fixes.local.md`, in the p
 
 1. Move entries from each machine's `fixes.local.md` into the skill's "If a span is flagged"
    section.
-2. Check the examples with `node check.mjs`.
+2. Check the examples with `node skills/latex-check/scripts/check.mjs`.
 3. Add a `tests/*.md` case, with its expected summary in `test.mjs`.
 4. If a new rule isn't already implied by the skill's "Rules" section, update it, keeping it
    short. Extend `tests/short-rules.md` to use the new rule correctly.
-5. If you changed the "Rules" section, update `lint.mjs` to match. `npm test` fails if the lint
-   misses a failure the checker catches, or flags the short-rules sample.
+5. If you changed the "Rules" section, update `skills/latex-check/scripts/lint.mjs` to match.
+   `npm test` fails if the lint misses a failure the checker catches, or flags the short-rules
+   sample.
 6. Run `npm test` and `claude plugin validate .`, then commit and push.
 7. On each machine, run `claude plugin update latex-check@latex-check`.
 
@@ -94,10 +95,9 @@ script is tested in `test.mjs` against results that match this view.
 ## If it can't be patched
 
 Rewrite it. Keep the same contract so callers don't change:
-- `node check.mjs [--flag on|off] [--surface code|chat] [--data <folder>] [file]`, stdin when no
-  file. `--data` is where
-  per-machine state lives (`app-path.local`, `fixes.local.md`, and jsdom when it isn't next to the
-  script).
+- `node skills/latex-check/scripts/check.mjs [--flag on|off] [--surface code|chat] [--data <folder>]
+  [file]`, stdin when no file. `--data` is where per-machine state lives (`app-path.local`,
+  `fixes.local.md`, and jsdom when it isn't in the repository or next to the script).
 - `--show-fixes`, `--add-fix "<text>"` and `--set-app-path "<path>"` read or write that state and
   exit, so the skill never edits files under `~/.claude`, which need approval.
 - Output lines: `FAIL  shown as text: <source>` and `FAIL  KaTeX error in <tex>: <message>`.

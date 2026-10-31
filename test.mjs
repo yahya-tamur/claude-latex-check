@@ -43,7 +43,7 @@ let bad = 0;
 for (const [file, want] of Object.entries(expected)) {
   let out;
   try {
-    out = execFileSync(process.execPath, [join(here, 'check.mjs'), join(here, 'tests', file)], { encoding: 'utf8' });
+    out = execFileSync(process.execPath, [join(here, 'skills/latex-check/scripts/check.mjs'), join(here, 'tests', file)], { encoding: 'utf8' });
   } catch (e) {
     if (e.status === 2) { console.log(`ERROR ${file}: ${e.stderr.trim()}`); bad++; continue; }
     out = e.stdout;
@@ -51,7 +51,7 @@ for (const [file, want] of Object.entries(expected)) {
   const got = out.trim().split('\n').pop();
   if (got !== want) { console.log(`DIFF  ${file}: expected "${want}", got "${got}"`); bad++; }
 }
-// The chat skill's KaTeX script (no app needed). These match what the chat view renders.
+// The chat skill's lint (no app needed). These match what the chat view renders.
 const katexExpected = {
   '01-mixed.md': 'ok: 15 checked', '02-digits.md': 'ok: 3 checked', '03-inline-dd.md': '1 failed, 0 checked',
   '04-katex-error.md': '2 failed, 2 checked', '05-table-pipe.md': 'ok: 1 checked', '06-list.md': 'ok: 3 checked',
@@ -69,17 +69,17 @@ const run = (script, file) => {
 };
 const last = out => out.trim().split('\n').pop();
 for (const [file, want] of Object.entries(katexExpected)) {
-  const got = last(run('skills/latex-check-chat/scripts/katex-check.mjs', file).out);
-  if (got !== want) { console.log(`DIFF  katex-check ${file}: expected "${want}", got "${got}"`); bad++; }
+  const got = last(run('skills/latex-check-chat/scripts/lint.mjs', file).out);
+  if (got !== want) { console.log(`DIFF  chat lint ${file}: expected "${want}", got "${got}"`); bad++; }
 }
 
-// The rules lint (the fallback when check.mjs breaks) must flag every file the checker flags, except
+// The Code tab skill's lint (the fallback when check.mjs breaks) must flag every file the checker flags, except
 // the dollar amounts, which aren't math; and the sample written by the rules must pass it.
 for (const [file, want] of Object.entries(expected)) {
   if (!want.includes('failed') || file === '08-dollars.md') continue;
-  if (run('lint.mjs', file).code !== 1) { console.log(`DIFF  lint ${file}: expected failures, got none`); bad++; }
+  if (run('skills/latex-check/scripts/lint.mjs', file).code !== 1) { console.log(`DIFF  lint ${file}: expected failures, got none`); bad++; }
 }
-if (last(run('lint.mjs', 'short-rules.md').out) !== 'ok: 17 checked') { console.log('DIFF  lint short-rules.md: expected "ok: 17 checked"'); bad++; }
+if (last(run('skills/latex-check/scripts/lint.mjs', 'short-rules.md').out) !== 'ok: 17 checked') { console.log('DIFF  lint short-rules.md: expected "ok: 17 checked"'); bad++; }
 
 const total = Object.keys(expected).length * 2 + 1;
 console.log(bad ? `${bad} of ${total} differ` : `all ${total} as expected`);

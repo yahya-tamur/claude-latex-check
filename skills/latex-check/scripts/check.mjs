@@ -239,11 +239,15 @@ if (!existsSync(join(dir, '.ok'))) {
 }
 
 // jsdom: the repo's own node_modules in a dev checkout, else the data folder (installed there once).
-// Only these two exact folders count: Node's normal lookup would also take a jsdom of any version
-// from a parent folder, such as the user's home.
+// Only these exact folders count: Node's normal lookup would also take a jsdom of any version from
+// a parent folder, such as the user's home. In a clone, jsdom sits at the repository root, three
+// levels up, recognized by this project's package.json.
 function loadJsdom() {
   const req = createRequire(import.meta.url);
-  for (const base of [here, dataDir]) {
+  const root = join(here, '..', '..', '..');
+  let isRepo = false;
+  try { isRepo = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).name === 'claude-latex-check'; } catch {}
+  for (const base of [...(isRepo ? [root] : []), here, dataDir]) {
     const pkg = join(base, 'node_modules', 'jsdom');
     if (existsSync(join(pkg, 'package.json'))) return req(pkg);
   }
