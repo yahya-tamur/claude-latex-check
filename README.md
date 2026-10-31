@@ -122,9 +122,10 @@ Install locations of the desktop app vary by platform, store and version, so the
 rely on a fixed list. It looks in this order:
 
 1. `app-path.local` in the plugin's data folder, if it exists. When the app isn't found, Claude
-   finds the folder containing `ion-dist` or `ion-dist.asar` and saves its path here, with `*` in
-   place of the version number, e.g. `C:\Program Files\Claude_*\app\resources`. When several
-   folders match, the most recently modified one is used, so the saved path survives updates.
+   finds the folder containing `ion-dist` or `ion-dist.asar` and saves its path here. The checker
+   cuts any folder name at its version number, so `Claude_1.2.3.0_x64__pzs8sxrjxfjjc` becomes
+   `Claude_*`. When several folders match, the most recently modified one that contains the app is
+   used, so the saved location follows updates.
 2. A few common locations: the Linux package (`/usr/lib/claude-desktop/resources`, tested),
    `/Applications/Claude.app` on macOS, and `%LOCALAPPDATA%\AnthropicClaude` on Windows.
 

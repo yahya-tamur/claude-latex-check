@@ -79,8 +79,8 @@ function unpackAsar(archive) {
 
 // The app's web UI bundle: <resources>/ion-dist/assets/<v>/ holding the .js chunks.
 // Where the app is installed varies by platform, store and version. A location found once is saved
-// in app-path.local next to this script (git-ignored), with `*` in place of version numbers so it
-// survives updates; after that come a few common guesses.
+// in app-path.local in the data folder and generalized by generalize() below, so it follows
+// updates; after that come a few common guesses.
 const args = process.argv.slice(2);
 let flag = 'on', file, dataDir;
 let showFixes = false, addFix, setAppPath;
@@ -109,14 +109,22 @@ if (showFixes || addFix !== undefined || setAppPath !== undefined) {
     console.log(`saved to ${fixesPath}`);
   }
   if (setAppPath !== undefined) {
-    writeFileSync(savedPath, setAppPath.trim() + '\n');
-    console.log(`saved app location ${setAppPath.trim()}`);
+    const pattern = generalize(setAppPath.trim());
+    writeFileSync(savedPath, pattern + '\n');
+    console.log(`saved app location ${pattern}`);
   }
   if (showFixes) console.log(existsSync(fixesPath) ? readFileSync(fixesPath, 'utf8').trim() : 'no local fixes yet');
   process.exit(0);
 }
 // Expand `*` in path segments; most recently modified first when several match (the newest
 // install), with the name as a tiebreaker.
+// Folder names that carry a version (and often more after it, like an architecture or a hash that
+// changes per release) are cut at the version or at an existing `*`, so `Claude_1.2.3.0_x64__abc`
+// and `Claude_*_x64__abc` both become `Claude_*`. A match still has to contain the app's bundle.
+function generalize(p) {
+  return p.split(/([\\/]+)/).map((seg, i) =>
+    i % 2 ? seg : seg.replace(/^(.*?)(?:\*|\d+\.\d+).*$/, '$1*')).join('');
+}
 function expand(p) {
   const root = p.match(/^([A-Za-z]:[\\/]|[\\/]+)/)?.[0] ?? '';
   const mtime = h => { try { return statSync(h).mtimeMs; } catch { return 0; } };
@@ -132,7 +140,7 @@ function expand(p) {
     .map(h => h.path);
 }
 function appAssets() {
-  const saved = existsSync(savedPath) ? expand(readFileSync(savedPath, 'utf8').trim()) : [];
+  const saved = existsSync(savedPath) ? expand(generalize(readFileSync(savedPath, 'utf8').trim())) : [];
   const resources = env.CLAUDE_DESKTOP_RESOURCES ? [env.CLAUDE_DESKTOP_RESOURCES] : [...saved, ...{
     linux: ['/usr/lib/claude-desktop/resources', '/opt/Claude/resources', '/opt/claude-desktop/resources',
       '/usr/lib/claude/resources'],

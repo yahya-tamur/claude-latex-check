@@ -58,10 +58,9 @@ Rewrite just that span:
 3. On exit 2, send the reply anyway, written by the rules, and handle it like this:
    - If the message says the app wasn't found, find the app's resources folder (the one containing
      `ion-dist` or `ion-dist.asar`; it varies by platform, store and version). Save it with
-     `node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --set-app-path "<path>"`,
-     with `*` in place of the version number, because the folder name changes with every update,
-     e.g. `C:\Program Files\Claude_*\app\resources`. When several folders match, the most
-     recently modified one is used.
+     `node "${CLAUDE_PLUGIN_ROOT}/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --set-app-path "<path>"`.
+     The checker replaces version numbers in folder names with `*` itself, so the location keeps
+     working after updates.
    - Otherwise, an app update has probably broken the checker. Tell the user once per session that
      math couldn't be checked, and suggest `claude plugin update latex-check@latex-check`, since a
      fix may already be published. If it still fails after updating, suggest reporting it at
