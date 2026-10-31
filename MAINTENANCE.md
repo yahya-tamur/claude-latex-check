@@ -1,11 +1,11 @@
 # Maintaining the checker
 
-For the plugin's maintainer, and Claude sessions working in this repository. The skill doesn't send
-users' sessions here: on a broken checker they suggest a plugin update or a GitHub issue, so
-reports arrive as issues and fixes reach everyone through `claude plugin update`.
+For anyone repairing the checker: the maintainer, Claude sessions working in this repository, or a
+user fixing it on their own machine. By default the skill suggests a plugin update or a GitHub
+issue when the checker breaks, and points here only if the user wants to fix it themselves.
 
-Work in a clone of the repository, not in an installed plugin folder, which is replaced on every
-update: `git clone https://github.com/yahya-tamur/claude-latex-check`, then `npm install` and
+Work in a clone of the repository rather than an installed plugin folder, which is replaced on
+every update: `git clone https://github.com/yahya-tamur/claude-latex-check`, then `npm install` and
 `npm test`.
 
 ## Signs that it's broken

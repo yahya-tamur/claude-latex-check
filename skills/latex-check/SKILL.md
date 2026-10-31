@@ -65,9 +65,9 @@ Rewrite just that span:
    - Otherwise, an app update has probably broken the checker. Tell the user once per session that
      math couldn't be checked, and suggest `claude plugin update latex-check@latex-check`, since a
      fix may already be published. If it still fails after updating, suggest reporting it at
-     https://github.com/yahya-tamur/claude-latex-check/issues with the error message. Don't try to
-     repair the checker; fixes are made in the repository and reach everyone through updates. Keep
-     writing by the rules, and don't re-run the checker this session.
+     https://github.com/yahya-tamur/claude-latex-check/issues with the error message. If the user
+     wants to repair it themselves, `${CLAUDE_PLUGIN_ROOT}/MAINTENANCE.md` explains how. Otherwise,
+     keep writing by the rules and don't re-run the checker this session.
 
 Plain dollar amounts like "$5 and $10" are reported as failures. That's a known false positive;
 ignore it. Don't read `check.mjs`, the tests or the app's files during normal use.
@@ -95,4 +95,3 @@ update or a bug report as described here.
 If the user reports that a formula didn't render even though the checker passed it, or that it
 flagged one that does render, fix the formula if needed, save an anonymized local fix as above, and
 suggest reporting it at https://github.com/yahya-tamur/claude-latex-check/issues with that example.
-Don't debug the checker.

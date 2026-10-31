@@ -58,7 +58,7 @@ claude plugin update latex-check@latex-check
 |---|---|
 | [`skills/latex-check/SKILL.md`](skills/latex-check/SKILL.md) | The skill: the rules, what to write when a formula fails, and how Claude checks replies |
 | [`check.mjs`](check.mjs), `env.mjs` | The checker |
-| [`MAINTENANCE.md`](MAINTENANCE.md) | How to repair the checker after an app update (for the maintainer) |
+| [`MAINTENANCE.md`](MAINTENANCE.md) | How to repair the checker after an app update |
 | `tests/`, `test.mjs` | One test per kind of failure in the skill, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
 | `.claude-plugin/` | Plugin and marketplace manifests |
 
@@ -108,12 +108,13 @@ Every so often:
 
 ## When the checker breaks
 
-App updates can break the checker. Users' sessions don't try to repair it: they keep writing by the
-rules, suggest `claude plugin update latex-check@latex-check`, and point to the
+App updates can break the checker. When that happens, sessions keep writing by the rules, suggest
+`claude plugin update latex-check@latex-check`, and point to the
 [issues page](https://github.com/yahya-tamur/claude-latex-check/issues) if that doesn't help.
-Formulas that rendered differently than the checker said are reported there too. Fixes are made in
-this repository; see [MAINTENANCE.md](MAINTENANCE.md) for how the checker finds its way around the
-app's code and how to repair it.
+Formulas that rendered differently than the checker said are reported there too. Users who want to
+fix it themselves can, and [MAINTENANCE.md](MAINTENANCE.md) explains how the checker finds its way
+around the app's code and how to repair it. Fixes that reach the repository go out to everyone
+through plugin updates.
 
 ## Platforms
 
