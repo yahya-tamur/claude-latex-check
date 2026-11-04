@@ -1,22 +1,57 @@
 # Maintaining the plugin
 
-## Where new rules come from
+## Where things are
 
-- **Code tab:** each machine records the fixes its sessions found in `fixes.local.md`, in the
-  plugin's data folder (`${CLAUDE_PLUGIN_DATA}`, a folder under `~/.claude/plugins/data/`).
-  `node skills/latex-check/scripts/check.mjs --data <folder> --show-fixes` prints them. These are
-  the best source of new rules.
-- **claude.ai and Cowork:** the chat skill records no local fixes. New rules come from reports, and
-  from comparing renderers: `check.mjs --surface chat` renders through the chat view that claude.ai
-  and Cowork share, so running a sample through both surfaces shows where they differ.
+| File | What it is |
+|---|---|
+| `skills/latex-check/` | The Claude Code skill. Its `scripts/` holds the checker (`check.mjs`, plus `env.mjs` for the browser globals, `bundle.mjs` for reading the app's code in place and `hooks.mjs` for serving it to `import()`) and `lint.mjs`, the fallback check against the rules and KaTeX |
+| `skills/latex-check-chat/` | The claude.ai and Cowork skill. Its `scripts/` holds `lint.mjs`, the bundled KaTeX 0.16.47 (`katex.min.cjs`, the version the app ships) and `math-spans.mjs`, which both skills' `lint.mjs` use to find and check formulas. It lives here because on claude.ai only a skill's own folder is copied into the sandbox |
+| `tests/`, `test.mjs` | One test per kind of failure, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
+| `.claude-plugin/` | Plugin and marketplace manifests |
+| `icon.svg`, `icon.png` | The icon: the source, and the PNG the manifest points to (only Anthropic's plugin directory reads it) |
 
-Test runs with `claude --plugin-dir` can share the data folder of the installed plugin, so don't
-delete the data folder after testing.
+## Running the checker and tests
 
-## When the rules change
+The checker needs Node 18.19+ (for module loader hooks) and the desktop app on the same machine.
+In a clone:
 
-Update everything that encodes them, in the skill you're changing:
+```bash
+npm install
+node skills/latex-check/scripts/check.mjs tests/short-rules.md
+```
 
+The second command should print `ok: 17 rendered`. Pass several files to check them in one run,
+each headed by a `== <file>` line, or pipe text in on stdin. Only problems are printed:
+
+```
+FAIL  shown as text: $1/r$
+1 failed, 14 rendered
+```
+
+- Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't run.
+- `--surface chat` renders through the claude.ai and Cowork chat view instead of the Code tab.
+- `--flag off` simulates the app's inline-math feature flag being off, so only `$$` blocks render.
+  The default is `on`.
+- `--data <folder>`, `--show-fixes` and `--add-fix "<text>"`: see [Per-machine files](#per-machine-files).
+- The lints take one file, or stdin: `node skills/latex-check/scripts/lint.mjs reply.md`, and
+  `skills/latex-check-chat/scripts/lint.mjs` for the chat skill.
+
+`npm test` runs the 25 files in `tests/` through the checker and the chat skill's lint, compares
+each result with what's expected, and checks that the Code tab's lint flags everything the checker
+does. Run it after changing either skill, its scripts or the tests, and after app updates: the
+checker falls back to the lint when an update breaks it, so users barely notice, and the tests are
+how you find out.
+
+## Changing the rules
+
+New rules come from:
+- **Code tab:** the fixes each machine's sessions saved in `fixes.local.md` (see
+  [Per-machine files](#per-machine-files)). These are the best source.
+- **claude.ai and Cowork:** the chat skill saves no fixes, so reports, and comparing renderers:
+  running a sample through `check.mjs` with and without `--surface chat` shows where the Code tab
+  and the chat view differ.
+
+When the rules change, update everything that encodes them, in the skill you're changing:
 - **Code tab:** the "Rules" and "If a span is flagged" sections of `skills/latex-check/SKILL.md`,
   and `skills/latex-check/scripts/lint.mjs`. Add a `tests/*.md` case with its expected result in
   `test.mjs`, and extend `tests/short-rules.md` if the rule changes how math should be written.
@@ -25,23 +60,45 @@ Update everything that encodes them, in the skill you're changing:
 - Code both lints share, finding formulas and running KaTeX, is in
   `skills/latex-check-chat/scripts/math-spans.mjs`.
 
-If `check.mjs`'s options change, update the commands written out in `skills/latex-check/SKILL.md`.
-Then run `npm test` and `claude plugin validate .`.
+## Releasing
 
-Raise `version` in `.claude-plugin/plugin.json` for every change users should get. Command-line
-installs only update when it changes, and claude.ai's update check found nothing new before the
-plugin had one.
+1. If `check.mjs`'s options changed, update the commands written out in
+   `skills/latex-check/SKILL.md`.
+2. Run `npm test` and `claude plugin validate .`.
+3. Raise `version` in `.claude-plugin/plugin.json`. Installs only update when it changes.
+
+## Per-machine files
+
+- **Data folder:** `${CLAUDE_PLUGIN_DATA}`, a folder under `~/.claude/plugins/data/` that survives
+  plugin updates. The skill passes it to the checker as `--data`. It holds `fixes.local.md`, which
+  `--show-fixes` prints and `--add-fix "<text>"` appends to, and jsdom, installed there on first use
+  unless the repository's own `node_modules` has it. Test runs with `claude --plugin-dir` can share
+  the installed plugin's data folder, so don't delete it after testing.
+- **Cache folder:** a small index, per app version, of which bundle files hold what. It's in
+  `~/.cache/claude-latex-check` (Linux, or `$XDG_CACHE_HOME`), `~/Library/Caches/claude-latex-check`
+  (macOS) or `%LOCALAPPDATA%\claude-latex-check` (Windows); `LATEX_CHECK_CACHE` overrides it.
+
+## Finding the app
+
+The checker looks in this order:
+
+1. The running desktop app: the folder next to its executable, from `/proc` on Linux, `ps` on
+   macOS and PowerShell on Windows. That's always the current version, and it works for Microsoft
+   Store installs, whose folder under `C:\Program Files\WindowsApps` can't be listed but can be
+   read.
+2. A few common install locations, for when the running app can't be seen (for example in a
+   sandbox): `/usr/lib/claude-desktop/resources` and similar on Linux, `/Applications/Claude.app`
+   on macOS, `%LOCALAPPDATA%\AnthropicClaude` on Windows.
+
+`CLAUDE_DESKTOP_RESOURCES` overrides both. If the app isn't found, the checker exits 2 and the
+skill uses the lint.
 
 ## What the checker relies on
 
-The checker runs the installed app's own code, so an app update can break it. Since it falls back
-to the lint when that happens, users barely notice; run `npm test` after app updates to find out.
-
 The app's code is in `<resources>/ion-dist/assets/v1/`, or in `ion-dist.asar` in newer builds,
 which `bundle.mjs` reads in place. `hooks.mjs` serves those files to `import()` with the patches
-below applied in memory, and the per-version index in the cache folder records which files hold
-what. File names and minified identifiers change every build, so everything is found by content,
-and these are the heuristics to start from when something can't be found:
+below applied in memory. File names and minified identifiers change every build, so everything is
+found by content, and these are the heuristics to start from when something can't be found:
 
 | What | Found by | Used for |
 |---|---|---|
