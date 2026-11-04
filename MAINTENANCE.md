@@ -36,7 +36,7 @@ FAIL  shown as text: $1/r$
 - The lints take one file, or stdin: `node skills/latex-check/scripts/lint.mjs reply.md`, and
   `skills/latex-check-chat/scripts/lint.mjs` for the chat skill.
 
-`npm test` runs the 25 files in `tests/` through the checker and the chat skill's lint, compares
+`npm test` runs the files in `tests/` through the checker and the chat skill's lint, compares
 each result with what's expected, and checks that the Code tab's lint flags everything the checker
 does. Run it after changing either skill, its scripts or the tests, and after app updates: the
 checker falls back to the lint when an update breaks it, so users barely notice, and the tests are

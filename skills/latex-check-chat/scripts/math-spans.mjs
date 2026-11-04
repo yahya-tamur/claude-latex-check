@@ -23,7 +23,8 @@ export function katexProblem(katex, tex, displayMode) {
 
 // The spans in a draft, in order. Each is one of:
 //   { type: 'display', tex, delim: '$$' | '\\[', span }  a paragraph that is just $$...$$ or \[...\]
-//   { type: 'midDisplay', span }                        $$...$$ inside a paragraph
+//   { type: 'midDisplay', tex, span, ownLine }          $$...$$ inside a paragraph; ownLine if
+//       nothing else is on its lines (the chat view renders that, the Code tab doesn't)
 //   { type: 'inline', tex, span, before, after, multiline }  $...$; before/after are the characters
 //       touching the dollars, skipping emphasis markers
 //   { type: 'paren', tex, span }                        \(...\)
@@ -37,7 +38,11 @@ export function findSpans(src) {
     if (!t) continue;
     const display = t.match(/^\$\$([\s\S]+)\$\$$/) ?? t.match(/^\\\[([\s\S]+)\\\]$/);
     if (display) { spans.push({ type: 'display', tex: display[1], delim: t.startsWith('$$') ? '$$' : '\\[', span: t }); continue; }
-    for (const m of t.matchAll(/\$\$[^$]+\$\$/g)) spans.push({ type: 'midDisplay', span: m[0] });
+    for (const m of t.matchAll(/\$\$([^$]+)\$\$/g)) {
+      const end = m.index + m[0].length;
+      const ownLine = /(^|\n)[ \t]*$/.test(t.slice(0, m.index)) && /^[ \t]*(\n|$)/.test(t.slice(end));
+      spans.push({ type: 'midDisplay', tex: m[1], span: m[0], ownLine });
+    }
     const rest = t.replace(/\$\$[^$]+\$\$/g, m => ' '.repeat(m.length));
     for (const m of rest.matchAll(/\\\(([\s\S]+?)\\\)/g)) spans.push({ type: 'paren', tex: m[1], span: m[0] });
     for (const m of rest.matchAll(/\\\[[\s\S]*?\\\]/g)) spans.push({ type: 'bracket', span: m[0] });

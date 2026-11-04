@@ -12,11 +12,14 @@ it before sending.
 
 ## Rules
 
-- Use `$...$` inline and `$$...$$` only as its own paragraph. Never use `\(...\)` or `\[...\]`.
+- Use `$...$` inline and `$$...$$` only as its own paragraph, with a blank line before and after;
+  its own line isn't enough. In a list item, also indent it to the item's text. Never use `\(...\)`
+  or `\[...\]`.
 - Inline spans: at most 60 characters, on one line, not starting with a digit, `(` or `[`, not
   ending with an operator.
-- Every inline span other than a single letter or `f(x)` needs a `\command` or one of
-  `= + - < > ^ _`. Plain letters like `$xy$` or `$AB/B$` stay text.
+- Every inline span other than a single letter, or a single letter before parentheses like
+  `f(x)`, needs a `\command` or one of `= + - < > ^ _`. Plain letters like `$xy$` or `$AB/B$`
+  stay text, and so does `$AB(n)$`: write `$\mathrm{AB}(n)$`.
 - Brace every subscript and superscript: `x_{i}`, `x^{2}`, `x'^{n}`.
 - Put a space before each opening `$`, and a space or `.,;:!?)` after each closing `$`. Never a
   straight quote or hyphen touching a `$`: use “curly quotes” or a non-breaking hyphen (U+2011).
@@ -71,6 +74,8 @@ ignore it. Don't read `check.mjs`, the tests or the app's files during normal us
 ## Learning from failures
 
 Each fail-and-retry round costs edits and a re-run, so don't hit the same failure twice:
+- Before saving, check whether a rule above already explains the failure, even if it isn't the
+  first explanation you thought of; if one does, don't save it.
 - When a `FAIL` gets fixed and the fix isn't already covered above or in the local fixes, save it
   right away: the form that failed, the form that rendered, and the rule if there is one.
   `node "${CLAUDE_SKILL_DIR}/scripts/check.mjs" --data "${CLAUDE_PLUGIN_DATA}" --add-fix "<entry>"`

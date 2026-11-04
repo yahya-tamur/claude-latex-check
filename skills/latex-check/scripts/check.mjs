@@ -256,6 +256,8 @@ const [, createRoot] = pickBy(reactFns, f => f.length === 2 && src(f).includes('
   typeof f(document.createElement('div'))?.render === 'function', 'createRoot');
 const [, jsx] = pickBy(reactFns.filter(([, f]) => src(f).length < 800 && f.length >= 2), f => {
   const T = () => null, e = f(T, { a: 1 });
+  // Async functions found here reject later, which would otherwise end the run.
+  if (e instanceof Promise) { e.catch(() => {}); return false; }
   return e?.$$typeof === Symbol.for('react.transitional.element') && e.type === T && e.props.a === 1;
 }, 'jsx');
 const [hookName, useTranscriptMarkdown] = pickOne(await load(files.renderer),

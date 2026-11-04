@@ -35,6 +35,8 @@ const expected = {
   '22-prime-superscript.md': '1 failed, 3 rendered',   // $x'^n$ fails; $x'^{n}$ renders
   '23-bracket-colon.md': '2 failed, 2 rendered',       // $[A:B]$ fails; $[A \colon B]$ renders
   '24-hyphen-before.md': '1 failed, 1 rendered',       // word-$k$ fails; U+2011 hyphen renders
+  // $$ on its own line inside a paragraph fails with its neighbors; with blank lines, even in a list, it renders
+  '25-display-own-line.md': '3 failed, 4 rendered',
   // a sample written strictly by the short rules in skills/latex-check/SKILL.md: must render
   // fully, or the short rules (or the checker) need fixing
   'short-rules.md': 'ok: 17 rendered',
@@ -70,6 +72,7 @@ const katexExpected = {
   '16-trailing-operator.md': 'ok: 2 checked', '17-quote-adjacent.md': 'ok: 2 checked', '18-quote-before.md': 'ok: 7 checked',
   '19-paren-start.md': 'ok: 10 checked', '20-plain-letters.md': 'ok: 5 checked', '21-uppercase-subscript.md': 'ok: 4 checked',
   '22-prime-superscript.md': 'ok: 4 checked', '23-bracket-colon.md': 'ok: 4 checked', '24-hyphen-before.md': 'ok: 2 checked',
+  '25-display-own-line.md': 'ok: 7 checked',
   'short-rules.md': 'ok: 17 checked',
 };
 const last = out => out.trim().split('\n').pop();

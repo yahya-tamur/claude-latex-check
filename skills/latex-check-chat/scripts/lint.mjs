@@ -21,7 +21,7 @@ const problems = [];
 let checked = 0;
 const check = (tex, displayMode) => { checked++; const p = katexProblem(katex, tex, displayMode); if (p) problems.push(p); };
 for (const s of findSpans(readFileSync(process.argv[2] ?? 0, 'utf8'))) {
-  if (s.type === 'display') check(s.tex, true);
+  if (s.type === 'display' || (s.type === 'midDisplay' && s.ownLine)) check(s.tex, true);
   else if (s.type === 'midDisplay') problems.push(`$$...$$ mid-sentence shows as text: ${s.span}`);
   else if (s.type === 'paren') check(s.tex, false);
   else if (s.type === 'inline' && s.multiline) problems.push(`$...$ split across lines shows as text: ${s.span}`);
