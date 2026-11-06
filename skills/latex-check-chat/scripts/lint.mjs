@@ -7,6 +7,8 @@
 //   FAIL  KaTeX error in <tex>: <message>        invalid TeX, shown as an error
 //   FAIL  unknown command <cmd> shown literally in <tex>
 //   FAIL  $$...$$ mid-sentence shows as text: <span>
+//   FAIL  * inside $...$ can break nearby bold or italics: <span>
+//   FAIL  _ after a symbol can break nearby bold or italics: <span>
 //   FAIL  $...$ split across lines shows as text: <span>
 //   N failed, M checked  |  ok: M checked  |  ok: no math
 // exit 0 = all fine, 1 = something failed, 2 = couldn't run.
@@ -25,7 +27,11 @@ for (const s of findSpans(readFileSync(process.argv[2] ?? 0, 'utf8'))) {
   else if (s.type === 'midDisplay') problems.push(`$$...$$ mid-sentence shows as text: ${s.span}`);
   else if (s.type === 'paren') check(s.tex, false);
   else if (s.type === 'inline' && s.multiline) problems.push(`$...$ split across lines shows as text: ${s.span}`);
-  else if (s.type === 'inline') check(s.tex, false);
+  else if (s.type === 'inline') {
+    if (s.tex.includes('*')) problems.push(`* inside $...$ can break nearby bold or italics: ${s.span}`);
+    if (s.emphasis && /(^|[^A-Za-z0-9\\])_/.test(s.tex)) problems.push(`_ after a symbol can break nearby bold or italics: ${s.span}`);
+    check(s.tex, false);
+  }
 }
 
 for (const p of problems) console.log(`FAIL  ${p}`);

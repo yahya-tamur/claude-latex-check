@@ -1,0 +1,6 @@
+- $\mathbf{x}_{i}$ then **bold** then $\mathbf{y}_{j}$.
+- $\mathbf{x}\relax_{i}$ then **bold** then $\mathbf{y}\relax_{j}$.
+- $x^{2}_{i}$ then __bold__ then $y^{2}_{j}$.
+- $x_{i}^{2}$ then __bold__ then $y_{j}^{2}$.
+- $\hat{x}_{i}$ and $\bar{y}_{j}$ with no emphasis.
+- Escaped \*\* stays, and `**kwargs` is code, beside $a_{i}$.

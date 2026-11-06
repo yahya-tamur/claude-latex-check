@@ -15,6 +15,10 @@ session, follow these rules in every reply that contains math, and check it befo
 
 - Put `$$...$$` only on its own paragraph, never mid-sentence.
 - Keep each `$...$` on one line.
+- Never put `*` inside `$...$`: markdown can pair it with nearby `**bold**` or `*italics*`
+  markers, which then show as stars. Write the symbol as `\ast`, as in `$\mathcal{O}^{\ast}$`.
+- In a paragraph with bold or italics, put each `_` in `$...$` right after a letter or digit:
+  `x_{i}^{2}`, not `x^{2}_{i}`. After a symbol, it can pair with the emphasis markers the same way.
 - Use only commands KaTeX knows; give every command all its arguments, and balance braces.
 
 ## Checking a reply
@@ -32,6 +36,12 @@ send that text:
 - **`unknown command`:** use a command KaTeX supports, or `\operatorname{name}` / `\text{...}`.
 - **`$$...$$` mid-sentence:** use `$...$`, or give it its own paragraph.
 - **`$...$` split across lines:** join it onto one line.
+- **`*` inside `$...$`:** `\ast` for the symbol, as in `$f \ast g$` or `$f^{\ast}$`; `\operatorname`
+  for `\operatorname*` (the same inline); a starred environment like `pmatrix*` goes in a `$$`
+  paragraph.
+- **`_` after a symbol:** `x_{i}^{2}` for `x^{2}_{i}`; before a subscript, use named brackets:
+  `\lVert v \rVert_{2}`, `\lvert z \rvert_{p}`, `\lbrace a \rbrace_{i}`, `\lparen a \rparen_{n}`; after
+  a command's braces, add `\relax`: `\mathbf{x}\relax_{i}`. All look the same.
 
 If Node isn't available or the script exits 2, send the reply anyway, written by the rules.
 

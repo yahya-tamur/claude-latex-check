@@ -22,7 +22,7 @@ let checked = 0;
 const okBefore = c => c === undefined || /[\s([]/.test(c) || c > '\x7f';
 const okAfter = c => c === undefined || /[\s.,;:!?)]/.test(c) || c > '\x7f';
 
-function lintInline({ tex, span, before, after, multiline }) {
+function lintInline({ tex, span, before, after, multiline, emphasis }) {
   checked++;
   if (multiline) return fail('keep each $...$ on one line', span);
   const t = tex.trim();
@@ -32,6 +32,9 @@ function lintInline({ tex, span, before, after, multiline }) {
   const simple = /^[A-Za-z]$/.test(t) || /^[A-Za-z]\([A-Za-z0-9, ]*\)$/.test(t);
   if (!simple && !/\\[A-Za-z]|[=+\-<>^_]/.test(t)) fail('needs a \\command or one of = + - < > ^ _', span);
   if (/[_^](?!\{)/.test(t)) fail('brace every subscript and superscript', span);
+  if (t.includes('*')) fail('no * inside $...$; write \\ast', span);
+  if (emphasis && /(^|[^A-Za-z0-9\\])_/.test(t)) fail('next to bold or italics, put each _ right after a letter or digit', span);
+  if (t.includes('\\\\')) fail('row breaks \\\\ only in a $$ paragraph', span);
   if (!okBefore(before)) fail('space or ( [ before the opening $', span);
   if (!okAfter(after)) fail('space or .,;:!?) after the closing $', span);
   katexCheck(tex, false);

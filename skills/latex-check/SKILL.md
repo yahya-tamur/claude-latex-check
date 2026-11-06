@@ -21,6 +21,11 @@ it before sending.
   `f(x)`, needs a `\command` or one of `= + - < > ^ _`. Plain letters like `$xy$` or `$AB/B$`
   stay text, and so does `$AB(n)$`: write `$\mathrm{AB}(n)$`.
 - Brace every subscript and superscript: `x_{i}`, `x^{2}`, `x'^{n}`.
+- Never put `*` inside `$...$`: markdown can pair it with nearby `**bold**` or `*italics*`
+  markers, which then show as stars. Write the symbol as `\ast`, as in `$\mathcal{O}^{\ast}$`.
+- In a paragraph with bold or italics, put each `_` in `$...$` right after a letter or digit:
+  `x_{i}^{2}`, not `x^{2}_{i}`. After a symbol, it can pair with the emphasis markers the same way.
+- Anything with `\\` row breaks, such as a multi-row matrix or `cases`, goes in a `$$` paragraph.
 - Put a space before each opening `$`, and a space or `.,;:!?)` after each closing `$`. Never a
   straight quote or hyphen touching a `$`: use “curly quotes” or a non-breaking hyphen (U+2011).
 
@@ -39,9 +44,19 @@ Rewrite just that span:
   brackets, write a colon as `\colon`: `$[A \colon B]$`. For a family, reword:
   `choices $a_{B} \in A_{B}$`.
 - **Unbraced subscript or superscript:** `$A_{B}$`, `$x'^{n}$`.
+- **`*` inside `$...$`:** `\ast` for the symbol, as in `$f \ast g$` or `$f^{\ast}$`; `\operatorname`
+  for `\operatorname*` (the same inline); a starred environment like `pmatrix*` goes in a `$$`
+  paragraph.
+- **`_` after a symbol:** `x_{i}^{2}` for `x^{2}_{i}`; before a subscript, use named brackets:
+  `\lVert v \rVert_{2}`, `\lvert z \rvert_{p}`, `\lbrace a \rbrace_{i}`, `\lparen a \rparen_{n}`; after
+  a command's braces, add `\relax`: `\mathbf{x}\relax_{i}`. All look the same.
+- **`\\` inside `$...$`:** move the formula to a `$$` paragraph.
 - **Ends with an operator:** complete the formula, as in `$c \mapsto a \cdot b \cdot c$`.
 - **Something touches a dollar:** curly quotes, as in `means “$f$ has property P”`; a non-breaking
   hyphen, `word‑$k$`; or reword.
+- **Emphasis shown as text:** a `*` or `_` in a nearby formula paired with the `**` or `__`
+  markers. Fix that formula by the rules above. Stars or underscores meant to show go in code,
+  `` `**kwargs` ``, or are escaped, `\*\*`; the check skips both.
 - **`KaTeX error`:** the TeX itself is invalid, such as a missing argument in `\frac{1}`. Fix the
   syntax.
 

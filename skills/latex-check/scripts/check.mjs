@@ -319,7 +319,10 @@ for (const [i, text] of texts.entries()) {
   header(i);
   if (!hasMath(text)) { console.log('ok: no math'); continue; }
   const prose = proseOf(text);
-  const el = await render(text, false);
+  // Escaped \* and \_ outside math are meant to show; render them as look-alikes so the emphasis
+  // check below doesn't take them for markers. They never pair, so nothing else changes.
+  const el = await render(text.replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|\$\$[\s\S]*?\$\$|\$[^$\n]*\$)|\\([*_])/g,
+    (m, keep, c) => keep ?? (c === '*' ? '\u2217' : '\uff3f')), false);
   if (!el.textContent.trim() && text.trim()) die('renderer produced no output');
 
   const errors = [...el.querySelectorAll('.katex-error')];
@@ -348,10 +351,24 @@ for (const [i, text] of texts.entries()) {
     for (let k = 0; k < extra; k++) leftover.push(m[0]);
   }
 
+  // Emphasis markers left visible: a * or _ in a formula can pair with them instead.
+  const shown = el.cloneNode(true);
+  shown.querySelectorAll('.katex').forEach(k => k.replaceWith(`$${tex(k)}$`));
+  shown.querySelectorAll('code, pre').forEach(e => e.remove());
+  const flat = shown.textContent.replace(/\s+/g, ' ');
+  const emphasis = [];
+  let end = -1;
+  for (const m of flat.matchAll(/\*\*|__/g)) {
+    if (m.index < end) continue;
+    end = m.index + 40;
+    emphasis.push(flat.slice(Math.max(0, m.index - 20), end).trim());
+  }
+
   for (const e of errors) console.log(`FAIL  KaTeX error in ${e.textContent.trim()}: ${(e.getAttribute('title') ?? '').replace(/^ParseError: KaTeX parse error: /, '').split('\n')[0]}`);
   for (const [cmd, t] of unknown) console.log(`FAIL  unknown command ${cmd} shown literally in ${t}`);
   for (const s of leftover) console.log(`FAIL  shown as text: ${s}`);
-  const failed = errors.length + unknown.length + leftover.length;
+  for (const s of emphasis) console.log(`FAIL  emphasis shown as text: ${s}`);
+  const failed = errors.length + unknown.length + leftover.length + emphasis.length;
   console.log(failed ? `${failed} failed, ${rendered} rendered` : `ok: ${rendered} rendered`);
   anyFailed ||= failed > 0;
 }

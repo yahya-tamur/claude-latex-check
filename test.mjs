@@ -37,6 +37,12 @@ const expected = {
   '24-hyphen-before.md': '1 failed, 1 rendered',       // word-$k$ fails; U+2011 hyphen renders
   // $$ on its own line inside a paragraph fails with its neighbors; with blank lines, even in a list, it renders
   '25-display-own-line.md': '3 failed, 4 rendered',
+  // a * in a formula renders but can break nearby bold; the checker only sees math, the lints flag it
+  '26-star-in-math.md': 'ok: 9 rendered',
+  // inline row breaks show as text in the Code tab (markdown eats a backslash); one row or $$ renders
+  '27-inline-rows.md': '2 failed, 2 rendered',
+  // a _ after a symbol pairs with nearby emphasis; letter-first, \relax, no emphasis, escapes and code are fine
+  '28-emphasis.md': '2 failed, 11 rendered',
   // a sample written strictly by the short rules in skills/latex-check/SKILL.md: must render
   // fully, or the short rules (or the checker) need fixing
   'short-rules.md': 'ok: 17 rendered',
@@ -66,13 +72,16 @@ for (const [file, want] of Object.entries(expected)) {
 const katexExpected = {
   '01-mixed.md': 'ok: 15 checked', '02-digits.md': 'ok: 3 checked', '03-inline-dd.md': '1 failed, 0 checked',
   '04-katex-error.md': '2 failed, 2 checked', '05-table-pipe.md': 'ok: 1 checked', '06-list.md': 'ok: 3 checked',
-  '07-display-multiline.md': 'ok: 1 checked', '08-dollars.md': 'ok: no math', '09-escapes.md': 'ok: 2 checked',
+  '07-display-multiline.md': 'ok: 1 checked', '08-dollars.md': 'ok: no math', '09-escapes.md': '1 failed, 2 checked',
   '10-linebreak.md': '1 failed, 0 checked', '11-quote-code.md': 'ok: 1 checked', '12-no-math.md': 'ok: no math',
   '13-backslash-delims.md': '1 failed, 10 checked', '14-long-span.md': 'ok: 9 checked', '15-bracket-span.md': 'ok: 3 checked',
   '16-trailing-operator.md': 'ok: 2 checked', '17-quote-adjacent.md': 'ok: 2 checked', '18-quote-before.md': 'ok: 7 checked',
   '19-paren-start.md': 'ok: 10 checked', '20-plain-letters.md': 'ok: 5 checked', '21-uppercase-subscript.md': 'ok: 4 checked',
   '22-prime-superscript.md': 'ok: 4 checked', '23-bracket-colon.md': 'ok: 4 checked', '24-hyphen-before.md': 'ok: 2 checked',
   '25-display-own-line.md': 'ok: 7 checked',
+  '26-star-in-math.md': '4 failed, 9 checked',
+  '27-inline-rows.md': 'ok: 4 checked',
+  '28-emphasis.md': '4 failed, 11 checked',
   'short-rules.md': 'ok: 17 checked',
 };
 const last = out => out.trim().split('\n').pop();
@@ -89,6 +98,7 @@ for (const [file, want] of Object.entries(expected)) {
   if (!want.includes('failed') || file === '08-dollars.md') continue;
   if ((await codeResults[file]).code !== 1) { console.log(`DIFF  lint ${file}: expected failures, got none`); bad++; }
 }
+if ((await codeResults['26-star-in-math.md']).code !== 1) { console.log('DIFF  lint 26-star-in-math.md: expected failures, got none'); bad++; }
 if (last((await codeResults['short-rules.md']).out) !== 'ok: 17 checked') { console.log('DIFF  lint short-rules.md: expected "ok: 17 checked"'); bad++; }
 
 const total = Object.keys(expected).length * 2 + 1;

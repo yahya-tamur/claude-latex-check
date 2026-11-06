@@ -25,8 +25,9 @@ export function katexProblem(katex, tex, displayMode) {
 //   { type: 'display', tex, delim: '$$' | '\\[', span }  a paragraph that is just $$...$$ or \[...\]
 //   { type: 'midDisplay', tex, span, ownLine }          $$...$$ inside a paragraph; ownLine if
 //       nothing else is on its lines (the chat view renders that, the Code tab doesn't)
-//   { type: 'inline', tex, span, before, after, multiline }  $...$; before/after are the characters
-//       touching the dollars, skipping emphasis markers
+//   { type: 'inline', tex, span, before, after, multiline, emphasis }  $...$; before/after are the
+//       characters touching the dollars, skipping emphasis markers; emphasis if the paragraph has
+//       * or _ outside math, which a formula's * or _ could pair with
 //   { type: 'paren', tex, span }                        \(...\)
 //   { type: 'bracket', span }                           \[...\] inside a paragraph
 export function findSpans(src) {
@@ -44,6 +45,8 @@ export function findSpans(src) {
       spans.push({ type: 'midDisplay', tex: m[1], span: m[0], ownLine });
     }
     const rest = t.replace(/\$\$[^$]+\$\$/g, m => ' '.repeat(m.length));
+    const first = spans.length;
+    let prose = rest;
     for (const m of rest.matchAll(/\\\(([\s\S]+?)\\\)/g)) spans.push({ type: 'paren', tex: m[1], span: m[0] });
     for (const m of rest.matchAll(/\\\[[\s\S]*?\\\]/g)) spans.push({ type: 'bracket', span: m[0] });
     // Inline $...$, paired the way markdown math usually is: opening $ not followed by a space,
@@ -56,9 +59,21 @@ export function findSpans(src) {
       const tex = rest.slice(i + 1, j);
       spans.push({
         type: 'inline', tex, span: rest.slice(i, j + 1).replace(/\s*\n\s*/g, ' '), multiline: tex.includes('\n'),
-        before: skipEmphasis(rest, i - 1, -1), after: skipEmphasis(rest, j + 1, 1),
+        before: skipEmphasis(rest, i - 1, -1), after: skipEmphasis(rest, j + 1, 1), at: i,
       });
+      prose = prose.slice(0, i) + ' '.repeat(j + 1 - i) + prose.slice(j + 1);
       i = j;
+    }
+    // Emphasis can't cross into another list item, heading, table cell or quote line.
+    const blocks = [...prose.matchAll(/(?:^|\n)(?=[ \t]*(?:[-*+]|\d+[.)])[ \t]|[ \t]*[#>|])/g)].map(m => m.index).concat(prose.length);
+    for (const s of spans.slice(first)) {
+      if (s.type !== 'inline') continue;
+      const k = blocks.findLastIndex(b => b <= s.at);
+      const cellStart = prose.lastIndexOf('|', s.at), cellEnd = prose.indexOf('|', s.at);
+      const from = Math.max(blocks[k], cellStart), to = cellEnd < 0 ? blocks[k + 1] : Math.min(blocks[k + 1], cellEnd);
+      const block = prose.slice(from, to).replace(/^\n?[ \t]*(?:[-*+]|\d+[.)])[ \t]/, '');
+      s.emphasis = /[*_]/.test(block.replace(/\\[*_]/g, ''));
+      delete s.at;
     }
   }
   return spans;

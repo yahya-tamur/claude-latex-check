@@ -1,0 +1,3 @@
+- **Image of $\exp$:** $\mathcal{O}^*(U)$, $f * g$ and $\mathcal{O}^*$.
+- **Fixed:** $\mathcal{O}^{\ast}(U)$, $f \ast g$ and $\mathcal{O}^{\ast}$.
+- **Starred name:** $\operatorname*{arg\,max} f$, or $\operatorname{arg\,max} f$ without the star.
