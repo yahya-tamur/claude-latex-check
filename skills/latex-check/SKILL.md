@@ -1,6 +1,6 @@
 ---
 name: latex-check
-description: Write LaTeX math that renders in Claude Code (the desktop app's Code tab), and check replies before sending. Use whenever a reply in Claude Code will contain math in $...$ or $$...$$.
+description: Write LaTeX math that renders in Claude Code (the desktop app's Code tab), and check replies and markdown documents before sending. Use whenever a reply or a markdown file written in Claude Code will contain math in $...$ or $$...$$.
 allowed-tools: Bash(node *) PowerShell(node *)
 ---
 
@@ -9,6 +9,8 @@ allowed-tools: Bash(node *) PowerShell(node *)
 The app only treats a span as math when it looks like a formula, so valid TeX can show as plain
 text. For the rest of this session, write every reply that contains math by these rules, and check
 it before sending.
+
+Markdown files you write that contain math follow these rules too, plus those in "Documents" below.
 
 ## Rules
 
@@ -25,7 +27,8 @@ it before sending.
   markers, which then show as stars. Write the symbol as `\ast`, as in `$\mathcal{O}^{\ast}$`.
 - In a paragraph with bold or italics, put each `_` in `$...$` right after a letter or digit:
   `x_{i}^{2}`, not `x^{2}_{i}`. After a symbol, it can pair with the emphasis markers the same way.
-- Anything with `\\` row breaks, such as a multi-row matrix or `cases`, goes in a `$$` paragraph.
+- Write row breaks as `\cr` followed by a space, not `\\`, as in
+  `\begin{pmatrix} 1 & 2 \cr 3 & 4 \end{pmatrix}`. Markdown can eat a backslash of `\\`.
 - Put a space before each opening `$`, and a space or `.,;:!?)` after each closing `$`. Never a
   straight quote or hyphen touching a `$`: use “curly quotes” or a non-breaking hyphen (U+2011).
 
@@ -49,8 +52,9 @@ Rewrite just that span:
   paragraph.
 - **`_` after a symbol:** `x_{i}^{2}` for `x^{2}_{i}`; before a subscript, use named brackets:
   `\lVert v \rVert_{2}`, `\lvert z \rvert_{p}`, `\lbrace a \rbrace_{i}`, `\lparen a \rparen_{n}`; after
-  a command's braces, add `\relax`: `\mathbf{x}\relax_{i}`. All look the same.
-- **`\\` inside `$...$`:** move the formula to a `$$` paragraph.
+  a command's braces, drop the braces around a single letter: `\mathbf x_{i}`, `\hat x_{i}`. All
+  look the same.
+- **`\\` row break:** write `\cr` instead, followed by a space.
 - **Ends with an operator:** complete the formula, as in `$c \mapsto a \cdot b \cdot c$`.
 - **Something touches a dollar:** curly quotes, as in `means “$f$ has property P”`; a non-breaking
   hyphen, `word‑$k$`; or reword.
@@ -59,6 +63,21 @@ Rewrite just that span:
   `` `**kwargs` ``, or are escaped, `\*\*`; the check skips both.
 - **`KaTeX error`:** the TeX itself is invalid, such as a missing argument in `\frac{1}`. Fix the
   syntax.
+
+## Documents
+
+A markdown file you write, such as notes or a write-up, may be opened in many viewers: the Code
+tab's file pane renders like this tab, Cowork and claude.ai like their chat, and other editors and
+sites each their own way. Write it by the rules above, and also:
+- Write named commands instead of escaped punctuation, which some viewers strip: `\lbrace a \rbrace`
+  for `\{a\}`, `\Vert` for `\|`, and `\thinspace`, `\medspace`, `\thickspace`, `\negthinspace` for
+  `\,`, `\:`, `\;`, `\!` (so `$2\thinspace x$`, not `$2\,x$`).
+- In a table, write `\vert` instead of `|` inside formulas: a `|` can end the cell.
+- Keep math out of headings.
+
+Before saying the file is done, check it three ways and fix flagged spans as above: with the
+checker as in "Checking a reply" below, again with `--surface chat` added, and with
+`node "${CLAUDE_SKILL_DIR}/scripts/lint.mjs" --doc <file>`.
 
 ## Checking a reply
 

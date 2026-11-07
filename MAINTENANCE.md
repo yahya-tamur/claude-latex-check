@@ -5,7 +5,7 @@
 | File | What it is |
 |---|---|
 | `skills/latex-check/` | The Claude Code skill. Its `scripts/` holds the checker (`check.mjs`, plus `env.mjs` for the browser globals, `bundle.mjs` for reading the app's code in place and `hooks.mjs` for serving it to `import()`) and `lint.mjs`, the fallback check against the rules and KaTeX |
-| `skills/latex-check-chat/` | The claude.ai and Cowork skill. Its `scripts/` holds `lint.mjs`, the bundled KaTeX 0.16.47 (`katex.min.cjs`, the version the app ships) and `math-spans.mjs`, which both skills' `lint.mjs` use to find and check formulas. It lives here because on claude.ai only a skill's own folder is copied into the sandbox |
+| `skills/latex-check-chat/` | The claude.ai and Cowork skill. Its `scripts/` holds `lint.mjs`, the bundled KaTeX 0.16.47 (`katex.min.cjs`, the version the app ships) and `math-spans.mjs`, which both skills' `lint.mjs` use to find formulas and hold the rules they check. It lives here because on claude.ai only a skill's own folder is copied into the sandbox |
 | `tests/`, `test.mjs` | One test per kind of failure, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
 | `.claude-plugin/` | Plugin and marketplace manifests |
 | `icon.svg`, `icon.png` | The icon: the source, and the PNG the manifest points to (only Anthropic's plugin directory reads it) |
@@ -34,7 +34,9 @@ FAIL  shown as text: $1/r$
   The default is `on`.
 - `--data <folder>`, `--show-fixes` and `--add-fix "<text>"`: see [Per-machine files](#per-machine-files).
 - The lints take one file, or stdin: `node skills/latex-check/scripts/lint.mjs reply.md`, and
-  `skills/latex-check-chat/scripts/lint.mjs` for the chat skill.
+  `skills/latex-check-chat/scripts/lint.mjs` for the chat skill. `--doc` adds the rules for
+  markdown documents, which other viewers may open; the chat skill's lint then also applies the
+  Code tab's rules.
 
 `npm test` runs the files in `tests/` through the checker and the chat skill's lint, compares
 each result with what's expected, and checks that the Code tab's lint flags everything the checker
@@ -51,14 +53,17 @@ New rules come from:
   running a sample through `check.mjs` with and without `--surface chat` shows where the Code tab
   and the chat view differ.
 
-When the rules change, update everything that encodes them, in the skill you're changing:
-- **Code tab:** the "Rules" and "If a span is flagged" sections of `skills/latex-check/SKILL.md`,
-  and `skills/latex-check/scripts/lint.mjs`. Add a `tests/*.md` case with its expected result in
-  `test.mjs`, and extend `tests/short-rules.md` if the rule changes how math should be written.
-- **claude.ai and Cowork:** `skills/latex-check-chat/SKILL.md` and
-  `skills/latex-check-chat/scripts/lint.mjs`, with the expected results in `test.mjs`.
-- Code both lints share, finding formulas and running KaTeX, is in
-  `skills/latex-check-chat/scripts/math-spans.mjs`.
+When the rules change, update everything that encodes them:
+- **The lints:** `skills/latex-check-chat/scripts/math-spans.mjs` holds the rules both lints check:
+  `commonRules` (both skills), `strictRules` (the Code tab, and documents in the chat skill) and
+  `docRules` (documents).
+- **Code tab:** the "Rules", "If a span is flagged" and "Documents" sections of
+  `skills/latex-check/SKILL.md`. Extend `tests/short-rules.md` if the rule changes how math should
+  be written.
+- **claude.ai and Cowork:** the same sections of `skills/latex-check-chat/SKILL.md`.
+- **Tests:** add a `tests/*.md` case with its expected results in `test.mjs`, and extend
+  `tests/doc-rules.md` if the rule changes how documents should be written. `tests/viewer-sample.md`
+  shows the document rules next to the hazards they avoid, to open in other markdown viewers.
 
 ## Releasing
 

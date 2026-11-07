@@ -2,50 +2,27 @@
 // the app. The fallback when check.mjs can't run (e.g. after an app update). The rules are stricter
 // than the app, so a flagged formula may still render; a clean result means it follows the rules.
 //
-// usage: node lint.mjs [file.md]          (reads stdin when no file)
+// usage: node lint.mjs [--doc] [file.md]   (reads stdin when no file)
+//   --doc  also the rules for markdown documents, which other viewers open
 // Prints only problems ("FAIL  rule: <what>: <span>"), then "N failed, M checked", "ok: M checked"
 // or "ok: no math". exit 0 = all fine, 1 = something failed.
 import { readFileSync } from 'fs';
 // Span finding and KaTeX are shared with the chat skill, which bundles KaTeX.
-import { findSpans, katexProblem, loadKatex } from '../../latex-check-chat/scripts/math-spans.mjs';
+import { commonRules, docRules, findSpans, katexProblem, loadKatex, strictRules } from '../../latex-check-chat/scripts/math-spans.mjs';
 
 let katex;
 try { katex = loadKatex(); } catch {}
 
+const doc = process.argv.includes('--doc');
+const file = process.argv.slice(2).find(a => a !== '--doc');
 const problems = [];
-const fail = (what, span) => problems.push(`rule: ${what}: ${span}`);
 const katexCheck = (tex, displayMode) => { const p = katex && katexProblem(katex, tex, displayMode); if (p) problems.push(p); };
 let checked = 0;
 
-// Characters allowed right before an opening $ and right after a closing $. Non-ASCII (curly
-// quotes, U+2011 hyphen) is fine.
-const okBefore = c => c === undefined || /[\s([]/.test(c) || c > '\x7f';
-const okAfter = c => c === undefined || /[\s.,;:!?)]/.test(c) || c > '\x7f';
-
-function lintInline({ tex, span, before, after, multiline, emphasis }) {
-  checked++;
-  if (multiline) return fail('keep each $...$ on one line', span);
-  const t = tex.trim();
-  if (tex.length > 60) fail('at most 60 characters', span);
-  if (/^[\d([]/.test(t)) fail('don\'t start with a digit, ( or [', span);
-  if (/(?:[-+=<>/^_,:;({[\\]|(?<![_^])\*)$/.test(t)) fail('don\'t end with an operator', span);
-  const simple = /^[A-Za-z]$/.test(t) || /^[A-Za-z]\([A-Za-z0-9, ]*\)$/.test(t);
-  if (!simple && !/\\[A-Za-z]|[=+\-<>^_]/.test(t)) fail('needs a \\command or one of = + - < > ^ _', span);
-  if (/[_^](?!\{)/.test(t)) fail('brace every subscript and superscript', span);
-  if (t.includes('*')) fail('no * inside $...$; write \\ast', span);
-  if (emphasis && /(^|[^A-Za-z0-9\\])_/.test(t)) fail('next to bold or italics, put each _ right after a letter or digit', span);
-  if (t.includes('\\\\')) fail('row breaks \\\\ only in a $$ paragraph', span);
-  if (!okBefore(before)) fail('space or ( [ before the opening $', span);
-  if (!okAfter(after)) fail('space or .,;:!?) after the closing $', span);
-  katexCheck(tex, false);
-}
-
-for (const s of findSpans(readFileSync(process.argv[2] ?? 0, 'utf8'))) {
-  if (s.type === 'inline') lintInline(s);
-  else if (s.type === 'midDisplay') fail('$$...$$ only as its own paragraph', s.span);
-  else if (s.type === 'paren' || s.type === 'bracket' || (s.type === 'display' && s.delim === '\\['))
-    fail('use $...$ or $$...$$, not \\( \\) or \\[ \\]', s.span);
-  else if (s.type === 'display') { checked++; katexCheck(s.tex, true); }
+for (const s of findSpans(readFileSync(file ?? 0, 'utf8'))) {
+  for (const p of [...commonRules(s), ...strictRules(s), ...(doc ? docRules(s) : [])]) problems.push(`rule: ${p}: ${s.span}`);
+  if (s.type === 'inline') { checked++; if (!s.multiline) katexCheck(s.tex, false); }
+  else if (s.type === 'display' && s.delim === '$$') { checked++; katexCheck(s.tex, true); }
 }
 
 for (const p of problems) console.log(`FAIL  ${p}`);

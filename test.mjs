@@ -39,13 +39,15 @@ const expected = {
   '25-display-own-line.md': '3 failed, 4 rendered',
   // a * in a formula renders but can break nearby bold; the checker only sees math, the lints flag it
   '26-star-in-math.md': 'ok: 9 rendered',
-  // inline row breaks show as text in the Code tab (markdown eats a backslash); one row or $$ renders
-  '27-inline-rows.md': '2 failed, 2 rendered',
-  // a _ after a symbol pairs with nearby emphasis; letter-first, \relax, no emphasis, escapes and code are fine
+  // inline \\ row breaks show as text in the Code tab (markdown eats a backslash); one row, $$ or \cr renders
+  '27-inline-rows.md': '2 failed, 3 rendered',
+  // a _ after a symbol pairs with nearby emphasis; letter-first, \mathbf x_{i}, no emphasis, escapes and code are fine
   '28-emphasis.md': '2 failed, 11 rendered',
   // a sample written strictly by the short rules in skills/latex-check/SKILL.md: must render
   // fully, or the short rules (or the checker) need fixing
   'short-rules.md': 'ok: 17 rendered',
+  // a document written by all the rules, including the document rules: see also the checks below
+  'doc-rules.md': 'ok: 21 rendered',
 };
 
 let bad = 0;
@@ -80,9 +82,9 @@ const katexExpected = {
   '22-prime-superscript.md': 'ok: 4 checked', '23-bracket-colon.md': 'ok: 4 checked', '24-hyphen-before.md': 'ok: 2 checked',
   '25-display-own-line.md': 'ok: 7 checked',
   '26-star-in-math.md': '4 failed, 9 checked',
-  '27-inline-rows.md': 'ok: 4 checked',
+  '27-inline-rows.md': '3 failed, 5 checked',
   '28-emphasis.md': '4 failed, 11 checked',
-  'short-rules.md': 'ok: 17 checked',
+  'short-rules.md': 'ok: 17 checked', 'doc-rules.md': 'ok: 21 checked',
 };
 const last = out => out.trim().split('\n').pop();
 const chatResults = Object.fromEntries(Object.keys(expected).map((f, i) => [f, chatLints[i]]));
@@ -101,6 +103,18 @@ for (const [file, want] of Object.entries(expected)) {
 if ((await codeResults['26-star-in-math.md']).code !== 1) { console.log('DIFF  lint 26-star-in-math.md: expected failures, got none'); bad++; }
 if (last((await codeResults['short-rules.md']).out) !== 'ok: 17 checked') { console.log('DIFF  lint short-rules.md: expected "ok: 17 checked"'); bad++; }
 
-const total = Object.keys(expected).length * 2 + 1;
+// The document sample must also render in the chat view and pass both lints with --doc.
+const docFile = join(here, 'tests', 'doc-rules.md');
+const docRuns = {
+  'chat view': [join(here, 'skills/latex-check/scripts/check.mjs'), '--surface', 'chat', docFile],
+  'lint --doc': [join(here, 'skills/latex-check/scripts/lint.mjs'), '--doc', docFile],
+  'chat lint --doc': [join(here, 'skills/latex-check-chat/scripts/lint.mjs'), '--doc', docFile],
+};
+for (const [what, args] of Object.entries(docRuns)) {
+  const got = last((await node(args)).out);
+  if (!got.startsWith('ok:')) { console.log(`DIFF  ${what} doc-rules.md: expected ok, got "${got}"`); bad++; }
+}
+
+const total = Object.keys(expected).length * 2 + 1 + Object.keys(docRuns).length;
 console.log(bad ? `${bad} of ${total} differ` : `all ${total} as expected`);
 process.exit(bad ? 1 : 0);
