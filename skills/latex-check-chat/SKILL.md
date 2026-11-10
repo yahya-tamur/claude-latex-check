@@ -56,9 +56,11 @@ A markdown file you create may also be opened in stricter viewers, such as Claud
 only treats a span as math when it looks like a formula. Write it by the rules above, and also:
 - Inline `$...$`: at most 60 characters; not starting with a digit, `(` or `[`; not ending with an
   operator. Split a long one into spans joined by words, or move it to a `$$` paragraph.
-- Every inline formula other than a single letter, or a single letter before parentheses like
-  `f(x)`, needs a `\command` or one of `= + - < > ^ _`: `$\frac{1}{r}$`, not `$1/r$`;
-  `$x = (a, b)$`, not `$(a, b)$`; `$\mathrm{AB}(n)$`, not `$AB(n)$`.
+- Every inline formula needs a `\command` or one of `= + - < > ^ _`, except a single letter, or a
+  single letter applied to single letters or numbers separated by `, `, like `f(x)` or `f(a, b)`:
+  `$\frac{1}{r}$`, not `$1/r$`; `$x = (a, b)$`, not `$(a, b)$`; `$\mathrm{AB}(n)$`, not `$AB(n)$`;
+  `$f(a, b)$`, not `$f(a,b)$`.
+- Write a hash sign as `\char35`, not `\#`, which shows as text: `$M \char35 N$`.
 - Brace every subscript and superscript: `x_{i}`, `x^{2}`.
 - Put a space before each opening `$`, and a space or `.,;:!?)` after each closing `$`. Never a
   straight quote or hyphen touching a `$`: use “curly quotes” or a non-breaking hyphen (U+2011).

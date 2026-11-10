@@ -43,6 +43,8 @@ const expected = {
   '27-inline-rows.md': '2 failed, 3 rendered',
   // a _ after a symbol pairs with nearby emphasis; letter-first, \mathbf x_{i}, no emphasis, escapes and code are fine
   '28-emphasis.md': '2 failed, 11 rendered',
+  // \# and letters packed in f(...) show as text; \char35 and f(a, b) render
+  '29-hash-and-args.md': '3 failed, 4 rendered',
   // a sample written strictly by the short rules in skills/latex-check/SKILL.md: must render
   // fully, or the short rules (or the checker) need fixing
   'short-rules.md': 'ok: 17 rendered',
@@ -84,6 +86,7 @@ const katexExpected = {
   '26-star-in-math.md': '4 failed, 9 checked',
   '27-inline-rows.md': '3 failed, 5 checked',
   '28-emphasis.md': '4 failed, 11 checked',
+  '29-hash-and-args.md': 'ok: 7 checked',
   'short-rules.md': 'ok: 17 checked', 'doc-rules.md': 'ok: 21 checked',
 };
 const last = out => out.trim().split('\n').pop();

@@ -112,9 +112,11 @@ export function strictRules(s) {
   if (s.tex.length > 60) p.push('at most 60 characters');
   if (/^[\d([]/.test(t)) p.push('don\'t start with a digit, ( or [');
   if (/(?:[-+=<>/^_,:;({[\\]|(?<![_^])\*)$/.test(t)) p.push('don\'t end with an operator');
-  const simple = /^[A-Za-z]$/.test(t) || /^[A-Za-z]\([A-Za-z0-9, ]*\)$/.test(t);
+  // f(x) and f(a, b) render plain; f(a,b) and f(ab) don't.
+  const simple = /^[A-Za-z]$/.test(t) || /^[A-Za-z]\((?:[A-Za-z]|\d+)(?:, (?:[A-Za-z]|\d+))*\)$/.test(t);
   if (!simple && !/\\[A-Za-z]|[=+\-<>^_]/.test(t)) p.push('needs a \\command or one of = + - < > ^ _');
   if (/[_^](?!\{)/.test(t)) p.push('brace every subscript and superscript');
+  if (t.includes('\\#')) p.push('write # as \\char35, not \\#');
   if (!okBefore(s.before)) p.push('space or ( [ before the opening $');
   if (!okAfter(s.after)) p.push('space or .,;:!?) after the closing $');
   return p;

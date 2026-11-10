@@ -19,9 +19,11 @@ Markdown files you write that contain math follow these rules too, plus those in
   or `\[...\]`.
 - Inline spans: at most 60 characters, on one line, not starting with a digit, `(` or `[`, not
   ending with an operator.
-- Every inline span other than a single letter, or a single letter before parentheses like
-  `f(x)`, needs a `\command` or one of `= + - < > ^ _`. Plain letters like `$xy$` or `$AB/B$`
-  stay text, and so does `$AB(n)$`: write `$\mathrm{AB}(n)$`.
+- Every inline span needs a `\command` or one of `= + - < > ^ _`, except a single letter, or a
+  single letter applied to single letters or numbers separated by `, `, like `f(x)` or `f(a, b)`.
+  Plain letters like `$xy$` or `$AB/B$` stay text, and so do `$AB(n)$`, `$f(a,b)$` and `$f(ab)$`:
+  write `$\mathrm{AB}(n)$` and `$f(a, b)$`.
+- Write a hash sign as `\char35`, not `\#`, which shows as text: `$M \char35 N$`.
 - Brace every subscript and superscript: `x_{i}`, `x^{2}`, `x'^{n}`.
 - Never put `*` inside `$...$`: markdown can pair it with nearby `**bold**` or `*italics*`
   markers, which then show as stars. Write the symbol as `\ast`, as in `$\mathcal{O}^{\ast}$`.
@@ -55,6 +57,7 @@ Rewrite just that span:
   a command's braces, drop the braces around a single letter: `\mathbf x_{i}`, `\hat x_{i}`. All
   look the same.
 - **`\\` row break:** write `\cr` instead, followed by a space.
+- **`\#`:** write `\char35`.
 - **Ends with an operator:** complete the formula, as in `$c \mapsto a \cdot b \cdot c$`.
 - **Something touches a dollar:** curly quotes, as in `means “$f$ has property P”`; a non-breaking
   hyphen, `word‑$k$`; or reword.
