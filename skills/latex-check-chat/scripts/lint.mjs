@@ -4,6 +4,8 @@
 //
 // usage: node lint.mjs [--doc] [file.md]   (reads stdin when no file)
 //   --doc  for a markdown document: also the rules of stricter viewers such as Claude Code's
+//   --fix  first rewrite inline formulas into forms stricter viewers render, where a known
+//          rewrite exists, saving the file in place and printing its new text
 // Prints only problems, then a summary line:
 //   FAIL  KaTeX error in <tex>: <message>        invalid TeX, shown as an error
 //   FAIL  unknown command <cmd> shown literally in <tex>
@@ -12,19 +14,28 @@
 //   FAIL  $...$ split across lines shows as text: <span>
 //   N failed, M checked  |  ok: M checked  |  ok: no math
 // exit 0 = all fine, 1 = something failed, 2 = couldn't run.
-import { readFileSync } from 'fs';
-import { commonRules, docRules, findSpans, katexProblem, loadKatex, strictRules } from './math-spans.mjs';
+import { readFileSync, writeFileSync } from 'fs';
+import { commonRules, docRules, findSpans, fixText, katexProblem, loadKatex, strictRules } from './math-spans.mjs';
 
 let katex;
 try { katex = loadKatex(); }
 catch (e) { console.error(`lint: couldn't load KaTeX: ${e.message}`); process.exit(2); }
 
 const doc = process.argv.includes('--doc');
-const file = process.argv.slice(2).find(a => a !== '--doc');
+const file = process.argv.slice(2).find(a => !a.startsWith('--'));
 const problems = [];
 let checked = 0;
 const check = (tex, displayMode) => { checked++; const p = katexProblem(katex, tex, displayMode); if (p) problems.push(p); };
-for (const s of findSpans(readFileSync(file ?? 0, 'utf8'))) {
+let text = readFileSync(file ?? 0, 'utf8');
+if (process.argv.includes('--fix')) {
+  const r = fixText(text, katex);
+  if (r.fixed) {
+    text = r.text;
+    if (file) writeFileSync(file, text);
+    console.log(`rewrote ${r.fixed} formulas${file ? ' and saved the file' : ''}; the text is now:\n${text.trimEnd()}\n--`);
+  }
+}
+for (const s of findSpans(text)) {
   // Documents are opened in other viewers too, so they also follow the strictest one's rules.
   for (const p of [...commonRules(s), ...(doc ? [...strictRules(s), ...docRules(s)] : [])]) problems.push(`rule: ${p}: ${s.span}`);
   if (s.type === 'display' || (s.type === 'midDisplay' && s.ownLine)) check(s.tex, true);

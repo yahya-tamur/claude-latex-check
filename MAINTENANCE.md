@@ -30,6 +30,12 @@ FAIL  shown as text: $1/r$
 
 - Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't run.
 - `--surface chat` renders through the claude.ai and Cowork chat view instead of the Code tab.
+- `--fix` first rewrites inline formulas into forms the Code tab renders, where a known rewrite
+  exists, saves each file in place and prints its new text. The rewrites are `fixText` in
+  `skills/latex-check-chat/scripts/math-spans.mjs`, and both lints take `--fix` too. Most of the
+  work is done by putting `\textstyle `, a no-op in inline math, in front: the app's test for
+  “looks like math” (`on(e)` near `inHouseLatexPlugin` in the bundle) passes anything with a
+  backslash that has no four-letter word outside braces and no trailing operator.
 - `--flag off` simulates the app's inline-math feature flag being off, so only `$$` blocks render.
   The default is `on`.
 - `--data <folder>`, `--show-fixes` and `--add-fix "<text>"`: see [Per-machine files](#per-machine-files).
@@ -61,6 +67,8 @@ When the rules change, update everything that encodes them:
   `skills/latex-check/SKILL.md`. Extend `tests/short-rules.md` if the rule changes how math should
   be written.
 - **claude.ai and Cowork:** the same sections of `skills/latex-check-chat/SKILL.md`.
+- **Rewrites:** if a failure has a rewrite that draws the same thing, add it to `fixText` and to
+  `tests/fix/broken.md` instead of adding a rule for sessions to follow.
 - **Tests:** add a `tests/*.md` case with its expected results in `test.mjs`, and extend
   `tests/doc-rules.md` if the rule changes how documents should be written. `tests/viewer-sample.md`
   shows the document rules next to the hazards they avoid, to open in other markdown viewers.

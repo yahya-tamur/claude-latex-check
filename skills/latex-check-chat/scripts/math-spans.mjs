@@ -28,16 +28,21 @@ export function katexProblem(katex, tex, displayMode) {
 //   { type: 'inline', tex, span, before, after, multiline, emphasis }  $...$; before/after are the
 //       characters touching the dollars, skipping emphasis markers; emphasis if the paragraph has
 //       * or _ outside math, which a formula's * or _ could pair with; table and heading if it's
-//       in a table row or a heading
+//       in a table row or a heading; start and end are its position in src
 //   { type: 'paren', tex, span }                        \(...\)
 //   { type: 'bracket', span }                           \[...\] inside a paragraph
 export function findSpans(src) {
   // Code blocks and inline code aren't math; blank them out, keeping line breaks.
   const text = src.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, m => m.replace(/[^\n]/g, ' '));
   const spans = [];
-  for (const para of text.split(/\n[ \t]*\n/)) {
+  // Split on blank lines, keeping each paragraph's position in src.
+  const parts = text.split(/(\n[ \t]*\n)/);
+  for (let k = 0, offset = 0; k < parts.length; offset += parts[k].length, k++) {
+    if (k % 2) continue;
+    const para = parts[k];
     const t = para.trim();
     if (!t) continue;
+    const base = offset + para.length - para.trimStart().length;
     const display = t.match(/^\$\$([\s\S]+)\$\$$/) ?? t.match(/^\\\[([\s\S]+)\\\]$/);
     if (display) { spans.push({ type: 'display', tex: display[1], delim: t.startsWith('$$') ? '$$' : '\\[', span: t }); continue; }
     for (const m of t.matchAll(/\$\$([^$]+)\$\$/g)) {
@@ -61,6 +66,7 @@ export function findSpans(src) {
       spans.push({
         type: 'inline', tex, span: rest.slice(i, j + 1).replace(/\s*\n\s*/g, ' '), multiline: tex.includes('\n'),
         before: skipEmphasis(rest, i - 1, -1), after: skipEmphasis(rest, j + 1, 1), at: i,
+        start: base + i, end: base + j + 1,
       });
       prose = prose.slice(0, i) + ' '.repeat(j + 1 - i) + prose.slice(j + 1);
       i = j;
@@ -117,6 +123,10 @@ export function strictRules(s) {
   if (!simple && !/\\[A-Za-z]|[=+\-<>^_]/.test(t)) p.push('needs a \\command or one of = + - < > ^ _');
   if (/[_^](?!\{)/.test(t)) p.push('brace every subscript and superscript');
   if (t.includes('\\#')) p.push('write # as \\char35, not \\#');
+  // A run of 4+ letters reads as a word; letters in a command's braces don't count.
+  let bare = t.replace(/\\[A-Za-z]+/g, ' ');
+  while (/\{[^{}]*\}/.test(bare)) bare = bare.replace(/\{[^{}]*\}/g, ' ');
+  if (/[A-Za-z]{4,}/.test(bare)) p.push('no run of four or more letters outside braces; space them, as in U F U G');
   if (!okBefore(s.before)) p.push('space or ( [ before the opening $');
   if (!okAfter(s.after)) p.push('space or .,;:!?) after the closing $');
   return p;
@@ -130,6 +140,108 @@ export function docRules(s) {
   if (s.table && /(?<!\\)\|/.test(s.tex)) p.push('in a table, write \\vert, not |');
   if (s.heading) p.push('no math in headings');
   return p;
+}
+
+// Rewrite the inline formulas of a draft into forms the Code tab renders, where a known rewrite
+// exists; returns { text, fixed } (fixed: how many formulas changed). Every rewrite draws the same
+// thing in TeX. What it can't fix (mainly a formula too long to split) is left for the checker to
+// report. katex, when given, validates the pieces of a split.
+const PREFIX = '\\textstyle ';   // a no-op in inline math; with it the app takes any formula for math
+const MAX = 60;                  // the app's limit for an inline span, dollars excluded
+export function fixText(src, katex) {
+  const spans = findSpans(src).filter(s => s.type === 'inline' && !s.multiline);
+  let text = src, fixed = 0;
+  for (const s of spans.reverse()) {
+    let before = text.slice(0, s.start), after = text.slice(s.end);
+    const body = s.tex.trim().startsWith(PREFIX.trim()) ? s.tex.trim().slice(PREFIX.trim().length).trim() : s.tex.trim();
+    let out;
+    if (/^-?\d[\d.,]*$/.test(body) && !/[.,]$/.test(body)) out = body.replace(/^-/, '−');   // a lone number is plain text
+    else {
+      const b = fixBody(body, s.emphasis);
+      const pieces = PREFIX.length + b.length <= MAX ? [b] : splitLong(b, MAX - PREFIX.length, katex);
+      out = pieces
+        ? pieces.map(p => `$${PREFIX}${p}$`).join(' ')
+        : `$${b}$`;   // too long even to split: no room for the prefix
+    }
+    // A straight quote or hyphen touching a dollar stops the formula from rendering: curl the quote
+    // and its partner on the same line (one character for one, so earlier positions still hold).
+    if (out.startsWith('$')) {
+      if (before.endsWith('"')) {
+        const close = after.search(/"|\n/);
+        before = before.slice(0, -1) + '\u201c';
+        if (after[close] === '"') after = after.slice(0, close) + '\u201d' + after.slice(close + 1);
+      }
+      if (after.startsWith('"')) {
+        const open = Math.max(before.lastIndexOf('"'), before.lastIndexOf('\n'));
+        after = '\u201d' + after.slice(1);
+        if (before[open] === '"') before = before.slice(0, open) + '\u201c' + before.slice(open + 1);
+      }
+      if (/[A-Za-z0-9]-$/.test(before)) before = before.slice(0, -1) + '\u2011';
+    }
+    if (before + out + after !== text) fixed++;
+    text = before + out + after;
+  }
+  return { text, fixed };
+}
+
+function fixBody(tex, emphasis) {
+  let t = tex
+    .replace(/\\\\(?![A-Za-z])\s*/g, '\\cr ')                       // markdown eats a backslash of \\
+    .replace(/\\#\s*/g, '\\char35 ')
+    .replace(/\\operatorname\*/g, '\\operatorname')                 // the same in inline math
+    .replace(/(\\(?:begin|end)\{[A-Za-z]+)\*\}/g, '$1\u0000}')      // keep starred environment names
+    .replace(/\*/g, '\\ast ').replace(/\u0000/g, '*')
+    .replace(/([_^])([A-Za-z0-9])/g, '$1{$2}')
+    .replace(/([_^])(\\[A-Za-z]+)(?![A-Za-z{])/g, '$1{$2}');
+  if (emphasis) t = t
+    .replace(/\^(\{[^{}]*\})_(\{[^{}]*\})/g, '_$2^$1')              // x^{2}_{i} -> x_{i}^{2}
+    .replace(/(\\[A-Za-z]+)\{([A-Za-z])\}_/g, '$1 $2_');           // \mathbf{x}_ -> \mathbf x_
+  // Space out runs of four or more letters outside braces: the app takes them for a word.
+  let depth = 0, out = '';
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === '\\') { const m = /^\\([A-Za-z]+|.)?/.exec(t.slice(i))[0]; out += m; i += m.length - 1; continue; }
+    if (c === '{') depth++; else if (c === '}' && depth) depth--;
+    const run = depth === 0 && /^[A-Za-z]{4,}/.exec(t.slice(i));
+    if (run && !/[A-Za-z]/.test(t[i - 1] ?? '')) { out += run[0].split('').join(' '); i += run[0].length - 1; continue; }
+    out += c;
+  }
+  // A trailing operator makes the app take the formula for text.
+  out = out.replace(/ {2,}/g, ' ').trim();
+  if (/(?:(?<![_^])[-+]|[=<>/^_({[,:])$/.test(out)) out += '{}';
+  return out;
+}
+
+// Split a long formula into pieces of at most max characters, before relations and operators at
+// the top level, so `$a = b = c$` becomes `$a = b$ ${} = c$`. null if it can't be done.
+const SPLIT_AT = /^(?:=|<|>|\+|-|\\(?:to|le|ge|leq|geq|ne|neq|approx|equiv|cong|sim|simeq|subset|subseteq|supset|supseteq|in|mapsto|rightarrow|Rightarrow|leftarrow|implies|iff|cdot|times|oplus|otimes|circ|cup|cap|colon)(?![A-Za-z]))/;
+function splitLong(tex, max, katex) {
+  const cuts = [];
+  let brace = 0, paren = 0, group = 0;
+  for (let i = 0; i < tex.length; i++) {
+    const c = tex[i];
+    if (c === '\\') {
+      const m = /^\\([A-Za-z]+|.)?/.exec(tex.slice(i))[0];
+      if (m === '\\left' || m === '\\begin') group++; else if (m === '\\right' || m === '\\end') group--;
+      if (!brace && !paren && !group && tex[i - 1] === ' ' && SPLIT_AT.test(tex.slice(i))) cuts.push(i);
+      i += m.length - 1; continue;
+    }
+    if (c === '{') brace++; else if (c === '}') brace--;
+    else if (c === '(' || c === '[') paren++; else if (c === ')' || c === ']') paren--;
+    else if (!brace && !paren && !group && tex[i - 1] === ' ' && SPLIT_AT.test(tex.slice(i))) cuts.push(i);
+  }
+  const pieces = [];
+  let from = 0;
+  const len = (a, b) => tex.slice(a, b).trim().length + (a ? 3 : 0);   // later pieces start with "{} "
+  while (len(from, tex.length) > max) {
+    const cut = cuts.filter(c => c > from && len(from, c) <= max).pop();
+    if (cut === undefined) return null;
+    pieces.push(tex.slice(from, cut)); from = cut;
+  }
+  pieces.push(tex.slice(from));
+  const done = pieces.map((p, k) => (k ? '{} ' : '') + p.trim());
+  if (katex && done.some(p => katexProblem(katex, p, false))) return null;
+  return done;
 }
 
 function skipEmphasis(s, i, step) {

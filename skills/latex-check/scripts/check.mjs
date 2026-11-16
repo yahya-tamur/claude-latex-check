@@ -4,7 +4,9 @@
 // the same markdown hook + react-markdown + KaTeX the Code tab uses. Prints only problems: every
 // $...$, $$...$$, \(...\) or \[...\] left as plain text, and every KaTeX error.
 //
-// usage: node check.mjs [--flag on|off] [--data <folder>] [file.md ...]   (reads stdin when no file)
+// usage: node check.mjs [--fix] [--flag on|off] [--data <folder>] [file.md ...]   (reads stdin when no file)
+//   --fix   first rewrite inline formulas into forms that render, where a known rewrite exists,
+//           saving each file in place and printing its new text; then check as usual
 //   Several files are checked in one run, each preceded by a "== <file>" line.
 //   --data  folder for per-machine state; the plugin passes ${CLAUDE_PLUGIN_DATA}. Default: next to
 //           this script.
@@ -44,12 +46,13 @@ const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const args = process.argv.slice(2);
 let flag = 'on', dataDir;
 const inputs = [];
-let showFixes = false, addFix, surface = 'code';
+let showFixes = false, addFix, surface = 'code', fix = false;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--flag') flag = args[++i];
   else if (args[i] === '--data') dataDir = args[++i];
   else if (args[i] === '--surface') surface = args[++i];
   else if (args[i] === '--show-fixes') showFixes = true;
+  else if (args[i] === '--fix') fix = true;
   else if (args[i] === '--add-fix') addFix = args[++i];
   else inputs.push(args[i]);
 }
@@ -125,7 +128,23 @@ const cacheRoot = env.LATEX_CHECK_CACHE ?? {
 if (flag !== 'on' && flag !== 'off') die(`--flag must be on or off, got ${flag}`);
 if (surface !== 'code' && surface !== 'chat') die(`--surface must be code or chat, got ${surface}`);
 const texts = (inputs.length ? inputs : [0]).map(f => readFileSync(f, 'utf8'));
-const header = i => { if (inputs.length > 1) console.log(`== ${inputs[i]}`); };
+// --fix: rewrite first, so everything below sees the fixed text. Printed per file further down.
+const rewrites = texts.map(() => 0);
+if (fix) {
+  const { fixText, loadKatex } = await import('../../latex-check-chat/scripts/math-spans.mjs');
+  let katex;
+  try { katex = loadKatex(); } catch {}
+  texts.forEach((text, i) => {
+    const r = fixText(text, katex);
+    if (!r.fixed) return;
+    texts[i] = r.text; rewrites[i] = r.fixed;
+    if (inputs.length) writeFileSync(inputs[i], r.text);
+  });
+}
+const header = i => {
+  if (inputs.length > 1) console.log(`== ${inputs[i]}`);
+  if (rewrites[i]) console.log(`rewrote ${rewrites[i]} formulas${inputs.length ? ' and saved the file' : ''}; the text is now:\n${texts[i].trimEnd()}\n--`);
+};
 
 // Math delimiters outside code. Without any (and no stray \commands) there is nothing to render.
 const proseOf = text => text.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, '');

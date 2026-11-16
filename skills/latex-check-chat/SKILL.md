@@ -34,7 +34,7 @@ without `&&` or pipes. It prints only problems plus a summary line. Exit 0 = fin
 failed, 2 = it couldn't run.
 
 On `FAIL` lines, fix only the flagged formulas, edit them in the temp file in place, re-run, then
-send that text:
+send that text, character for character (if you change anything after the check, check again):
 - **`KaTeX error`:** fix the syntax, such as a missing argument in `\frac{1}` or an unbalanced `{`.
 - **`unknown command`:** use a command KaTeX supports, or `\operatorname{name}` / `\text{...}`.
 - **`$$...$$` mid-sentence:** use `$...$`, or give it its own paragraph.
@@ -60,6 +60,8 @@ only treats a span as math when it looks like a formula. Write it by the rules a
   single letter applied to single letters or numbers separated by `, `, like `f(x)` or `f(a, b)`:
   `$\frac{1}{r}$`, not `$1/r$`; `$x = (a, b)$`, not `$(a, b)$`; `$\mathrm{AB}(n)$`, not `$AB(n)$`;
   `$f(a, b)$`, not `$f(a,b)$`.
+- No run of four or more letters outside braces: `$G \to UFUG$` stays text. Space them,
+  `$G \to U F U G$`, or put them in a command's braces, `\mathrm{UFUG}`.
 - Write a hash sign as `\char35`, not `\#`, which shows as text: `$M \char35 N$`.
 - Brace every subscript and superscript: `x_{i}`, `x^{2}`.
 - Put a space before each opening `$`, and a space or `.,;:!?)` after each closing `$`. Never a
@@ -71,7 +73,8 @@ only treats a span as math when it looks like a formula. Write it by the rules a
 - In a table, write `\vert` instead of `|` inside formulas: a `|` can end the cell.
 - Keep math out of headings.
 
-Check it with `--doc` added, `node ${CLAUDE_SKILL_DIR}/scripts/lint.mjs --doc <file>`, and fix each
-flagged formula by these rules.
+Check it with `node ${CLAUDE_SKILL_DIR}/scripts/lint.mjs --fix --doc <file>`. `--fix` rewrites inline
+formulas into forms those viewers render where it can (mostly by putting `\textstyle `, which
+changes nothing visible, in front) and saves the file. Fix what it still flags by these rules.
 
 Don't mention the check or these rules in replies unless the user asks.

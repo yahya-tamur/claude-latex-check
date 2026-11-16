@@ -3,6 +3,8 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { join } from 'path';
+import { tmpdir } from 'os';
+import { copyFileSync, mkdtempSync, rmSync } from 'fs';
 import { fileURLToPath } from 'url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -45,6 +47,8 @@ const expected = {
   '28-emphasis.md': '2 failed, 11 rendered',
   // \# and letters packed in f(...) show as text; \char35 and f(a, b) render
   '29-hash-and-args.md': '3 failed, 4 rendered',
+  // a run of 4+ letters outside braces shows as text; 3 letters, spaced letters or braced ones render
+  '30-letter-runs.md': '2 failed, 6 rendered',
   // a sample written strictly by the short rules in skills/latex-check/SKILL.md: must render
   // fully, or the short rules (or the checker) need fixing
   'short-rules.md': 'ok: 17 rendered',
@@ -87,6 +91,7 @@ const katexExpected = {
   '27-inline-rows.md': '3 failed, 5 checked',
   '28-emphasis.md': '4 failed, 11 checked',
   '29-hash-and-args.md': 'ok: 7 checked',
+  '30-letter-runs.md': 'ok: 8 checked',
   'short-rules.md': 'ok: 17 checked', 'doc-rules.md': 'ok: 21 checked',
 };
 const last = out => out.trim().split('\n').pop();
@@ -118,6 +123,25 @@ for (const [what, args] of Object.entries(docRuns)) {
   if (!got.startsWith('ok:')) { console.log(`DIFF  ${what} doc-rules.md: expected ok, got "${got}"`); bad++; }
 }
 
-const total = Object.keys(expected).length * 2 + 1 + Object.keys(docRuns).length;
+// --fix must turn a draft full of known failures into one that renders in both views, and a second
+// pass must change nothing.
+const fixDir = mkdtempSync(join(tmpdir(), 'latex-check-test-'));
+const fixFile = join(fixDir, 'broken.md');
+copyFileSync(join(here, 'tests', 'fix', 'broken.md'), fixFile);
+const fixRuns = [
+  ['--fix', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 23 rendered'],
+  ['--fix again', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 23 rendered'],
+  ['fixed text, chat view', [join(here, 'skills/latex-check/scripts/check.mjs'), '--surface', 'chat', fixFile], 'ok: 23 rendered'],
+  ['fixed text, lint --fix', [join(here, 'skills/latex-check/scripts/lint.mjs'), '--fix', fixFile], 'ok: 23 checked'],
+];
+for (const [what, args, want] of fixRuns) {
+  const r = await node(args);
+  const got = last(r.out);
+  if (got !== want) { console.log(`DIFF  ${what} fix/broken.md: expected "${want}", got "${got}"`); bad++; }
+  if (what !== '--fix' && r.out.includes('rewrote')) { console.log(`DIFF  ${what} fix/broken.md: rewrote an already fixed file`); bad++; }
+}
+rmSync(fixDir, { recursive: true });
+
+const total = Object.keys(expected).length * 2 + 1 + Object.keys(docRuns).length + fixRuns.length;
 console.log(bad ? `${bad} of ${total} differ` : `all ${total} as expected`);
 process.exit(bad ? 1 : 0);
