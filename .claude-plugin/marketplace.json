@@ -8,7 +8,7 @@
     {
       "name": "latex-check",
       "source": "./",
-      "description": "Write LaTeX math that renders in Claude Code, claude.ai and Cowork, and check replies before sending"
+      "description": "Write LaTeX math that renders in Claude Code, claude.ai and Cowork. In Claude Code, replies with math are also copied into a document with their formulas fixed and checked by the desktop app's own renderer"
     }
   ]
 }

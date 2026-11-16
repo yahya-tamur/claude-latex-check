@@ -4,10 +4,10 @@
 
 | File | What it is |
 |---|---|
-| `skills/latex-check/` | The Claude Code skill. Its `scripts/` holds the checker (`check.mjs`, plus `env.mjs` for the browser globals, `bundle.mjs` for reading the app's code in place and `hooks.mjs` for serving it to `import()`) and `lint.mjs`, the fallback check against the rules and KaTeX |
+| `skills/latex-check/` | The Claude Code skill. Its `scripts/` holds the checker (`check.mjs`, plus `env.mjs` for the browser globals, `bundle.mjs` for reading the app's code in place and `loader.mjs` for serving it to `import()`) and `lint.mjs`, the check against the rules and KaTeX, used when the checker can't run |
 | `skills/latex-check-chat/` | The claude.ai and Cowork skill. Its `scripts/` holds `lint.mjs`, the bundled KaTeX 0.16.47 (`katex.min.cjs`, the version the app ships) and `math-spans.mjs`, which both skills' `lint.mjs` use to find formulas and hold the rules they check. It lives here because on claude.ai only a skill's own folder is copied into the sandbox |
-| `hooks/hooks.json` | Hooks, where they run (Claude Code, Cowork; not claude.ai's chat). After each reply, `skills/latex-check-chat/scripts/check-reply.mjs`: in the Code tab it copies a reply with math into the conversation document with fixed formulas; elsewhere, if the reply's math won't render, it asks the session for a corrected reply, at most once per reply. When the Code tab skill loads, `skills/latex-check/scripts/skill-loaded.mjs` |
-| `tests/`, `test.mjs` | One test per kind of failure, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
+| `hooks/` | The plugin's hooks (`hooks.json`), for the Code tab only: they act only in sessions that loaded the Code tab skill, and exit at once anywhere else. After each reply, `check-reply.mjs` copies a reply with math into the conversation document with fixed formulas. When the skill loads, `skill-loaded.mjs` starts the checker's background browser and tells the session the document's path |
+| `tests/`, `test.mjs` | One test per kind of failure; `short-rules.md` and `doc-rules.md`, a reply and a document written by the rules, which must render fully; `fix/broken.md`, known failures that must render after `--fix`; and `viewer-sample.md`, to open in other markdown viewers (not run by the tests) |
 | `.claude-plugin/` | Plugin and marketplace manifests |
 | `icon.svg`, `icon.png` | The icon: the source, and the PNG the manifest points to (only Anthropic's plugin directory reads it) |
 
@@ -21,7 +21,7 @@ npm install
 node skills/latex-check/scripts/check.mjs tests/short-rules.md
 ```
 
-The second command should print `ok: 17 rendered`. Pass several files to check them in one run,
+The second command should print `ok: 18 rendered`. Pass several files to check them in one run,
 each headed by a `== <file>` line, or pipe text in on stdin. Only problems are printed:
 
 ```
@@ -32,16 +32,16 @@ FAIL  shown as text: $1/r$
 - Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't run.
 - `--surface chat` renders through the claude.ai and Cowork chat view instead of the Code tab.
 - `--append <file.md>` adds the text to that markdown document once it passes, instead of
-  printing it; until then it's kept in a `.<name>.draft.md` next to the document. The Code tab
-  lint takes `--append` too. In the Code tab, the Stop hook uses it to copy every reply with math,
-  after the user's message, into `math-notes/<session>.md` in the working directory, so the session
-  writes each answer once, in chat, and the user reads it rendered in the file pane.
-  `skills/latex-check/scripts/skill-loaded.mjs`, a hook on the Skill tool, starts the background
-  browser when the skill loads and tells the session the document's path.
+  printing it; until then it's kept in a `.<name>.draft.md` next to the document. In the Code
+  tab, the Stop hook uses it to copy every reply with math, after the user's message, into
+  `math-notes/<session>.md` in the working directory, so the session writes each answer once, in
+  chat, and the user reads it rendered in the file pane. When the checker can't run, the hook uses
+  the Code tab lint's `--append` instead, which does the same rewrites without the renderer.
 - The first run leaves a copy of the checker running in the background (`--serve`) with the app's
   code loaded, so later runs take about 0.4 s instead of 2–4 s. It listens on a socket in the
   cache folder (a named pipe on Windows) named after the app version and the checker's code, and
-  exits after 30 minutes without checks. `LATEX_CHECK_NO_CACHE=1` skips it.
+  exits after 5 minutes without checks, and a new copy tells copies of other versions to exit.
+  `LATEX_CHECK_NO_CACHE=1` skips it.
 - `--fix` first rewrites inline formulas into forms the Code tab renders, where a known rewrite
   exists, saves each file in place and prints its new text. The rewrites are `fixText` in
   `skills/latex-check-chat/scripts/math-spans.mjs`, and both lints take `--fix` too. Most of the
@@ -58,16 +58,17 @@ FAIL  shown as text: $1/r$
 
 `npm test` runs the files in `tests/` through the checker and the chat skill's lint, compares
 each result with what's expected, and checks that the Code tab's lint flags everything the checker
-does. Run it after changing either skill, its scripts or the tests, and after app updates: the
-checker falls back to the lint when an update breaks it, so users barely notice, and the tests are
-how you find out.
+does. It also checks `--fix`, `--append` and the Stop hook. Run it after changing either skill,
+its scripts, the hooks or the tests, and after app updates: when an update breaks the checker, the
+hook falls back to the lint, so users barely notice, and the tests are how you find out.
 
 ## Changing the rules
 
 New rules come from:
 - **Code tab:** the fixes each machine's sessions saved in `fixes.local.md` (see
   [Per-machine files](#per-machine-files)). These are the best source.
-- **claude.ai and Cowork:** the chat skill saves no fixes, so reports, and comparing renderers:
+- **claude.ai and Cowork:** the chat skill saves no fixes and nothing checks its replies, so
+  reports, and comparing renderers:
   running a sample through `check.mjs` with and without `--surface chat` shows where the Code tab
   and the chat view differ.
 
@@ -75,10 +76,11 @@ When the rules change, update everything that encodes them:
 - **The lints:** `skills/latex-check-chat/scripts/math-spans.mjs` holds the rules both lints check:
   `commonRules` (both skills), `strictRules` (the Code tab, and documents in the chat skill) and
   `docRules` (documents).
-- **Code tab:** the "Rules", "If a span is flagged" and "Documents" sections of
+- **Code tab:** the "Rules", "If a span is flagged" and "Other documents" sections of
   `skills/latex-check/SKILL.md`. Extend `tests/short-rules.md` if the rule changes how math should
   be written.
-- **claude.ai and Cowork:** the same sections of `skills/latex-check-chat/SKILL.md`.
+- **claude.ai and Cowork:** the "Rules" and "Documents" sections of
+  `skills/latex-check-chat/SKILL.md`.
 - **Rewrites:** if a failure has a rewrite that draws the same thing, add it to `fixText` and to
   `tests/fix/broken.md` instead of adding a rule for sessions to follow.
 - **Tests:** add a `tests/*.md` case with its expected results in `test.mjs`, and extend
@@ -87,19 +89,20 @@ When the rules change, update everything that encodes them:
 
 ## Releasing
 
-1. If `check.mjs`'s options changed, update the commands written out in
-   `skills/latex-check/SKILL.md`.
+1. If `check.mjs`'s or the lints' options changed, update the commands written out in both
+   `SKILL.md` files and in `hooks/check-reply.mjs`.
 2. Run `npm test` and `claude plugin validate .`.
 3. Raise `version` in `.claude-plugin/plugin.json`. Installs only update when it changes.
 
 ## Per-machine files
 
 - **Data folder:** `${CLAUDE_PLUGIN_DATA}`, a folder under `~/.claude/plugins/data/` that survives
-  plugin updates. The skill passes it to the checker as `--data`. It holds `fixes.local.md`, which
+  plugin updates. The hook and the skill pass it to the checker as `--data`. It holds `fixes.local.md`, which
   `--show-fixes` prints and `--add-fix "<text>"` appends to, and jsdom, installed there on first use
   unless the repository's own `node_modules` has it. Test runs with `claude --plugin-dir` can share
   the installed plugin's data folder, so don't delete it after testing.
-- **Cache folder:** a small index, per app version, of which bundle files hold what. It's in
+- **Cache folder:** a small index, per app version, of which bundle files hold what, and the
+  background browser's socket. It's in
   `~/.cache/claude-latex-check` (Linux, or `$XDG_CACHE_HOME`), `~/Library/Caches/claude-latex-check`
   (macOS) or `%LOCALAPPDATA%\claude-latex-check` (Windows); `LATEX_CHECK_CACHE` overrides it.
 
@@ -116,12 +119,12 @@ The checker looks in this order:
    on macOS, `%LOCALAPPDATA%\AnthropicClaude` on Windows.
 
 `CLAUDE_DESKTOP_RESOURCES` overrides both. If the app isn't found, the checker exits 2 and the
-skill uses the lint.
+Stop hook uses the lint instead.
 
 ## What the checker relies on
 
 The app's code is in `<resources>/ion-dist/assets/v1/`, or in `ion-dist.asar` in newer builds,
-which `bundle.mjs` reads in place. `hooks.mjs` serves those files to `import()` with the patches
+which `bundle.mjs` reads in place. `loader.mjs` serves those files to `import()` with the patches
 below applied in memory. File names and minified identifiers change every build, so everything is
 found by content, and these are the heuristics to start from when something can't be found:
 
@@ -144,5 +147,7 @@ A unique match can still be the wrong thing, so a match alone isn't trusted:
 - The hook, react-markdown and the chat component must each match exactly once.
 - Once per app version, a wiring check confirms some app component still calls the hook as
   `hook(text, "chat", true, …)`.
-- Every run first renders a canary (`$a^2$` inline plus a `$$b^2$$` paragraph) and exits 2 unless
-  exactly the expected math renders.
+- Whenever the app's code is loaded (a check without the background browser, or the background
+  browser starting), a canary renders first (`$a^2$` inline plus a `$$b^2$$` paragraph), and the
+  checker exits 2 unless exactly the expected math renders; the chat view gets its own canary the
+  first time it's used.

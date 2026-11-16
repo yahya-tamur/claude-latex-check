@@ -1,5 +1,5 @@
 {
-  "description": "Copy replies with math into a conversation document with fixed formulas (Code tab), or ask for a corrected reply (Cowork)",
+  "description": "Claude Code only: copy replies with math into a conversation document with their formulas fixed and checked",
   "hooks": {
     "PostToolUse": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/latex-check/scripts/skill-loaded.mjs\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/skill-loaded.mjs\"",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/latex-check-chat/scripts/check-reply.mjs\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/check-reply.mjs\"",
             "timeout": 30
           }
         ]

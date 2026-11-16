@@ -1,5 +1,5 @@
 // Reading the app's ion-dist in place, packed (ion-dist.asar) or as a folder, without unpacking or
-// copying it. Used by check.mjs and by its module loader hooks (hooks.mjs).
+// copying it. Used by check.mjs and by its module loader hooks (loader.mjs).
 import { openSync, readSync, readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 

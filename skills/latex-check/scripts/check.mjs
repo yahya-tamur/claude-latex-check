@@ -23,7 +23,7 @@
 //
 // Loading the app's code takes a few seconds, so the first run leaves a copy of this script
 // running in the background (--serve) that keeps it loaded; later runs hand it their text and
-// take about 0.2 s. It exits after 30 minutes without checks. LATEX_CHECK_NO_CACHE=1 skips it.
+// take about 0.2 s. It exits after 5 minutes without checks. LATEX_CHECK_NO_CACHE=1 skips it.
 //
 // Finding the app: the running desktop app's resources folder (the one containing ion-dist or
 // ion-dist.asar), else a few common install locations.
@@ -35,7 +35,7 @@
 //
 // Bundle file names and minified export names change between app versions, so modules are found
 // by what they contain and exports by what their code does. The app's code is read in place, from
-// ion-dist.asar or the ion-dist folder, and patched in memory: hooks.mjs serves it to import().
+// ion-dist.asar or the ion-dist folder, and patched in memory: loader.mjs serves it to import().
 import { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readlinkSync } from 'fs';
 import { createHash } from 'crypto';
 import { homedir } from 'os';
@@ -150,8 +150,8 @@ const hasMath = text => /\$|\\\(|\\\[|\\[a-zA-Z]{2,}/.test(proseOf(text));
 // The browser with the app's code loaded is kept running between checks, in a background copy of
 // this script (--serve) that exits after IDLE_MS without requests. Its address names the app
 // version and this checker's code, so a copy left by another version is never used.
-const IDLE_MS = 30 * 60 * 1000;
-const codeKey = createHash('sha1').update(['check.mjs', 'env.mjs', 'hooks.mjs', 'bundle.mjs']
+const IDLE_MS = 5 * 60 * 1000;
+const codeKey = createHash('sha1').update(['check.mjs', 'env.mjs', 'loader.mjs', 'bundle.mjs']
   .map(f => { try { const st = statSync(join(here, f)); return `${f}:${st.size}:${st.mtimeMs}`; } catch { return f; } }).join()).digest('hex').slice(0, 8);
 const address = app => process.platform === 'win32'
   ? `\\\\.\\pipe\\claude-latex-check-${app.key}-${codeKey}` : join(cacheRoot, `browser-${app.key}-${codeKey}.sock`);
@@ -255,7 +255,16 @@ async function serveChecks() {
   const path = address(app);
   // Another copy may have started meanwhile: then this one isn't needed.
   if (await ask(path, { texts: [] })) process.exit(0);
-  if (process.platform !== 'win32') { mkdirSync(cacheRoot, { recursive: true }); rmSync(path, { force: true }); }
+  if (process.platform !== 'win32') {
+    mkdirSync(cacheRoot, { recursive: true });
+    rmSync(path, { force: true });
+    // Copies left by other app or checker versions: ask them to exit (an older copy that doesn't know
+    // "quit" exits on the request anyway), and remove sockets nothing listens on any more.
+    for (const f of ls(cacheRoot).filter(f => f.startsWith('browser-') && f.endsWith('.sock') && join(cacheRoot, f) !== path))
+      if (!(await ask(join(cacheRoot, f), { quit: true }))) rmSync(join(cacheRoot, f), { force: true });
+  }
+  // Stopped by a signal: exit normally, so the socket is removed.
+  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => process.exit(0));
   let idle, queue = Promise.resolve();
   const touch = () => { clearTimeout(idle); idle = setTimeout(() => process.exit(0), IDLE_MS); };
   net.createServer(sock => {
@@ -266,6 +275,7 @@ async function serveChecks() {
       if (!buf.includes('\n')) return;
       touch();
       const req = JSON.parse(buf.slice(0, buf.indexOf('\n')));
+      if (req.quit) { sock.end(`${JSON.stringify({ results: [] })}\n`, () => process.exit(0)); return; }
       queue = queue.then(async () => {
         const results = [];
         for (const text of req.texts) results.push(await engine.check(text, req.surface, req.flag));
@@ -315,7 +325,7 @@ async function createEngine(app) {
   }
   const files = index;
 
-  // Patches, applied in memory as hooks.mjs serves the chunks: { "assets/<v>/<file>": source }.
+  // Patches, applied in memory as loader.mjs serves the chunks: { "assets/<v>/<file>": source }.
   const patched = {};
   const patch = (name, re, to, what) => {
     const s = patched[`${assets}/${name}`] ?? read(name);
@@ -353,7 +363,7 @@ async function createEngine(app) {
   // Serve the bundle's chunks to import() under file URLs inside the bundle.
   const prefix = pathToFileURL(app.root).href + '/';
   if (!nodeModule.register) die(`needs Node 18.19 or newer for module loader hooks, found ${process.version}`);
-  nodeModule.register('./hooks.mjs', import.meta.url, { data: { prefix, root: app.root, patched } });
+  nodeModule.register('./loader.mjs', import.meta.url, { data: { prefix, root: app.root, patched } });
 
   globalThis.__latexCheckInlineMath = true;
   const { setupBrowser } = await import('./env.mjs');

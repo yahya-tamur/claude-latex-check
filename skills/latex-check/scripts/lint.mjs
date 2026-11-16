@@ -3,7 +3,8 @@
 // than the app, so a flagged formula may still render; a clean result means it follows the rules.
 //
 // usage: node lint.mjs [--fix] [--doc] [--append <file.md>] [file.md]   (reads stdin when no file)
-//   --append  add the text to this markdown document if nothing fails, as check.mjs does
+//   --append  add the text to this markdown document if nothing fails, as check.mjs does (the
+//             Stop hook's fallback when check.mjs can't run)
 //   --fix  first rewrite inline formulas where a known rewrite exists, saving the file in place
 //          and printing its new text
 //   --doc  also the rules for markdown documents, which other viewers open

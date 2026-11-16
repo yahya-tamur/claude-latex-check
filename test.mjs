@@ -51,9 +51,9 @@ const expected = {
   '30-letter-runs.md': '2 failed, 6 rendered',
   // a sample written strictly by the short rules in skills/latex-check/SKILL.md: must render
   // fully, or the short rules (or the checker) need fixing
-  'short-rules.md': 'ok: 17 rendered',
+  'short-rules.md': 'ok: 18 rendered',
   // a document written by all the rules, including the document rules: see also the checks below
-  'doc-rules.md': 'ok: 21 rendered',
+  'doc-rules.md': 'ok: 22 rendered',
 };
 
 let bad = 0;
@@ -92,7 +92,7 @@ const katexExpected = {
   '28-emphasis.md': '4 failed, 11 checked',
   '29-hash-and-args.md': 'ok: 7 checked',
   '30-letter-runs.md': 'ok: 8 checked',
-  'short-rules.md': 'ok: 17 checked', 'doc-rules.md': 'ok: 21 checked',
+  'short-rules.md': 'ok: 18 checked', 'doc-rules.md': 'ok: 22 checked',
 };
 const last = out => out.trim().split('\n').pop();
 const chatResults = Object.fromEntries(Object.keys(expected).map((f, i) => [f, chatLints[i]]));
@@ -109,7 +109,7 @@ for (const [file, want] of Object.entries(expected)) {
   if ((await codeResults[file]).code !== 1) { console.log(`DIFF  lint ${file}: expected failures, got none`); bad++; }
 }
 if ((await codeResults['26-star-in-math.md']).code !== 1) { console.log('DIFF  lint 26-star-in-math.md: expected failures, got none'); bad++; }
-if (last((await codeResults['short-rules.md']).out) !== 'ok: 17 checked') { console.log('DIFF  lint short-rules.md: expected "ok: 17 checked"'); bad++; }
+if (last((await codeResults['short-rules.md']).out) !== 'ok: 18 checked') { console.log('DIFF  lint short-rules.md: expected "ok: 18 checked"'); bad++; }
 
 // The document sample must also render in the chat view and pass both lints with --doc.
 const docFile = join(here, 'tests', 'doc-rules.md');
@@ -143,7 +143,7 @@ for (const [what, args, want] of fixRuns) {
 
 // --append: a passing entry is added to the document, a failing one is kept in a draft instead.
 const notesFile = join(fixDir, 'notes.md'), draftFile = join(fixDir, '.notes.draft.md');
-const appendRun = (input, args) => promisify(execFile)(process.execPath, [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', '--append', notesFile, ...args], { encoding: 'utf8' })
+const appendRun = args => promisify(execFile)(process.execPath, [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', '--append', notesFile, ...args], { encoding: 'utf8' })
   .then(r => ({ code: 0, out: r.stdout }), e => ({ code: e.code, out: e.stdout ?? '' }));
 const withStdin = (input, args) => new Promise(resolve => {
   const child = execFile(process.execPath, [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', '--append', notesFile, ...args], { encoding: 'utf8' },
@@ -156,24 +156,32 @@ appendChecks.push(['passing entry added', r1.code === 0 && readFileSync(notesFil
 let r2 = await withStdin('> Q2?\n\nBroken $\\frac{1}$ here.\n', []);
 appendChecks.push(['failing entry kept in a draft', r2.code === 1 && existsSync(draftFile) && !readFileSync(notesFile, 'utf8').includes('Broken')]);
 writeFileSync(draftFile, readFileSync(draftFile, 'utf8').replace('\\frac{1}', '\\frac{1}{2}'));
-let r3 = await appendRun('', [draftFile]);
+let r3 = await appendRun([draftFile]);
 appendChecks.push(['fixed draft added, draft removed', r3.code === 0 && !existsSync(draftFile) && readFileSync(notesFile, 'utf8').includes('\\frac{1}{2}')]);
 
-// The Stop hook: silent on a reply that renders, asks for a correction (with the fixed text when
-// the rewrites cover it) on one that doesn't, and never twice in a row.
+// The Stop hook: outside a session that loaded the Code tab skill, it does nothing.
 const hook = input => new Promise(resolve => {
-  const child = execFile(process.execPath, [join(here, 'skills/latex-check-chat/scripts/check-reply.mjs')], { encoding: 'utf8' },
+  const child = execFile(process.execPath, [join(here, 'hooks/check-reply.mjs')], { encoding: 'utf8' },
     (e, stdout) => resolve(stdout));
   child.stdin.end(JSON.stringify(input));
 });
 const h1 = await hook({ last_assistant_message: 'Fine: $x^{2} + 1$.' });
 appendChecks.push(['hook silent on a good reply', h1 === '']);
 const h2 = await hook({ last_assistant_message: 'Stars: $f^*$ and **bold** and $g^*$.' });
-appendChecks.push(['hook asks for a fixed reply', h2.includes('"decision":"block"') && h2.includes('f^{\\\\ast}')]);
+appendChecks.push(['hook silent outside the Code tab', h2 === '']);
 const h4 = await hook({ last_assistant_message: 'Defined on \\[a, b\\] here, with $x^{2}$.' });
-appendChecks.push(['hook catches escaped brackets in text', h4.includes('"decision":"block"')]);
+appendChecks.push(['hook silent outside the Code tab, escaped brackets', h4 === '']);
 const h3 = await hook({ last_assistant_message: 'Stars: $f^*$ and $g^*$.', stop_hook_active: true });
 appendChecks.push(['hook doesn\'t ask twice', h3 === '']);
+const transcript = join(fixDir, 'transcript.jsonl');
+writeFileSync(transcript, [
+  { type: 'user', message: { role: 'user', content: 'What is the derivative of x squared?' } },
+  { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Skill', input: { skill: 'latex-check:latex-check' } }] } },
+].map(o => JSON.stringify(o)).join('\n'));
+const h5 = await hook({ last_assistant_message: 'It is $2x$, and $0$ for a constant.', transcript_path: transcript, cwd: fixDir, session_id: 'abcd1234ffff' });
+const copy = join(fixDir, 'math-notes', 'abcd1234.md');
+appendChecks.push(['hook copies a Code tab reply into the document', h5 === '' && existsSync(copy)
+  && /> What is the derivative of x squared\?\n\nIt is \$\\textstyle 2x\$, and 0 for a constant\./.test(readFileSync(copy, 'utf8'))]);
 for (const [what, ok] of appendChecks) if (!ok) { console.log(`DIFF  ${what}`); bad++; }
 
 rmSync(fixDir, { recursive: true });

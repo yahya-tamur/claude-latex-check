@@ -27,24 +27,10 @@ Markdown files you create that contain math follow them too, plus those in "Docu
   `\begin{pmatrix} 1 & 2 \cr 3 & 4 \end{pmatrix}`. Markdown can eat a backslash of `\\`.
 - Use only commands KaTeX knows; give every command all its arguments, and balance braces.
 
-## After sending
+## Writing a reply
 
-Write the reply directly; don't draft it in a file first. Where the plugin's hook runs (Cowork), a
-check reads each reply after it's sent. If some math won't render, it lists the formulas, and
-often gives a corrected version: then send the whole reply again as it asks, with nothing else
-changed. Fixes for what it lists:
-- **`KaTeX error`:** fix the syntax, such as a missing argument in `\frac{1}` or an unbalanced `{`.
-- **`unknown command`:** use a command KaTeX supports, or `\operatorname{name}` / `\text{...}`.
-- **`$$...$$` mid-sentence:** use `$...$`, or give it its own paragraph.
-- **`$...$` split across lines:** join it onto one line.
-- **`*` inside `$...$`:** `\ast` for the symbol, as in `$f \ast g$` or `$f^{\ast}$`; `\operatorname`
-  for `\operatorname*` (the same inline); a starred environment like `pmatrix*` goes in a `$$`
-  paragraph.
-- **`_` after a symbol:** `x_{i}^{2}` for `x^{2}_{i}`; before a subscript, use named brackets:
-  `\lVert v \rVert_{2}`, `\lvert z \rvert_{p}`, `\lbrace a \rbrace_{i}`, `\lparen a \rparen_{n}`; after
-  a command's braces, drop the braces around a single letter: `\mathbf x_{i}`, `\hat x_{i}`. All
-  look the same.
-- **`\\` row break:** write `\cr` instead, followed by a space.
+Write the reply directly, by the rules above; nothing checks it after it's sent. If the user
+says a formula didn't render, rewrite it by the rules, or with a command KaTeX supports.
 
 ## Documents
 

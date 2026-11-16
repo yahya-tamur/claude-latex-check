@@ -2,13 +2,13 @@
   "name": "claude-latex-check",
   "private": true,
   "type": "module",
-  "description": "Check that LaTeX in a markdown reply renders as math in the Claude desktop app's Code tab",
+  "description": "Development checkout of the latex-check Claude plugin: its checker, lints and tests",
   "scripts": {
     "check": "node skills/latex-check/scripts/check.mjs",
     "test": "node test.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=18.19"
   },
   "dependencies": {
     "jsdom": "^24.1.3"
