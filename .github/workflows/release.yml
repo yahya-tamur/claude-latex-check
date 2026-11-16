@@ -1,0 +1,30 @@
+name: Release
+
+# Whenever main has a version in .claude-plugin/plugin.json that has no release yet, build the
+# plugin zip (npm run package) and publish it as release v<version>. Pushes that keep the version
+# do nothing.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release this version unless it's released already
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./.claude-plugin/plugin.json').version")
+          if gh release view "v$version" > /dev/null 2>&1; then
+            echo "v$version is released already"
+            exit 0
+          fi
+          node package.mjs
+          gh release create "v$version" "dist/latex-check-$version.zip" \
+            --target "$GITHUB_SHA" --title "$version" --generate-notes

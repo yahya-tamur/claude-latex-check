@@ -9,7 +9,7 @@
 | `hooks/` | The plugin's hooks (`hooks.json`), for the Code tab only: they act only in sessions that loaded the Code tab skill, and exit at once anywhere else. After each reply, `check-reply.mjs` copies a reply with math into the conversation document with fixed formulas. When the skill loads, `skill-loaded.mjs` starts the checker's background browser and tells the session the document's path |
 | `tests/`, `test.mjs` | One test per kind of failure; `short-rules.md` and `doc-rules.md`, a reply and a document written by the rules, which must render fully; `fix/broken.md`, known failures that must render after `--fix`; and `viewer-sample.md`, to open in other markdown viewers (not run by the tests) |
 | `.claude-plugin/` | Plugin and marketplace manifests |
-| `package.mjs` | Builds the plugin zip for releases (`npm run package`) |
+| `package.mjs`, `.github/workflows/release.yml` | Build the plugin zip (`npm run package`); the workflow publishes it as a GitHub release for each new version |
 | `icon.svg`, `icon.png` | The icon: the source, and the PNG the manifest points to (only Anthropic's plugin directory reads it) |
 
 ## Running the checker and tests
@@ -94,10 +94,10 @@ When the rules change, update everything that encodes them:
    `SKILL.md` files and in `hooks/check-reply.mjs`.
 2. Run `npm test` and `claude plugin validate .`.
 3. Raise `version` in `.claude-plugin/plugin.json`. Installs only update when it changes.
-4. Commit and push, then build the zip with `npm run package`, which writes
-   `dist/latex-check-<version>.zip` from the committed state, and attach it to a GitHub release:
-   `gh release create v<version> dist/latex-check-<version>.zip`. The zip can be loaded into the
-   Claude app as a plugin file, which helps when the marketplace is slow to pick up a new version.
+4. Commit and push. `.github/workflows/release.yml` then builds the zip (`npm run package`, which
+   writes `dist/latex-check-<version>.zip` from the committed state) and publishes it as GitHub
+   release `v<version>`, once per version. The zip can be loaded into the Claude app as a plugin
+   file, which helps when the marketplace is slow to pick up a new version.
 
 ## Per-machine files
 
