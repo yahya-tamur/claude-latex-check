@@ -22,7 +22,8 @@ export function katexProblem(katex, tex, displayMode) {
 }
 
 // The spans in a draft, in order. Each is one of:
-//   { type: 'display', tex, delim: '$$' | '\\[', span }  a paragraph that is just $$...$$ or \[...\]
+//   { type: 'display', tex, delim: '$$' | '\\[', span, quoted }  a paragraph that is just $$...$$ or
+//       \[...\]; quoted if it's inside a blockquote
 //   { type: 'midDisplay', tex, span, ownLine }          $$...$$ inside a paragraph; ownLine if
 //       nothing else is on its lines (the chat view renders that, the Code tab doesn't)
 //   { type: 'inline', tex, span, before, after, multiline, emphasis }  $...$; before/after are the
@@ -32,8 +33,12 @@ export function katexProblem(katex, tex, displayMode) {
 //   { type: 'paren', tex, span }                        \(...\)
 //   { type: 'bracket', span }                           \[...\] inside a paragraph
 export function findSpans(src) {
-  // Code blocks and inline code aren't math; blank them out, keeping line breaks.
-  const text = src.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, m => m.replace(/[^\n]/g, ' '));
+  // Code blocks and inline code aren't math; blank them out, keeping line breaks. Blank out
+  // blockquote markers too, remembering where they were: inside a quote, the text is read as usual.
+  const quoted = [];
+  const text = src.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, m => m.replace(/[^\n]/g, ' '))
+    .replace(/^[ \t]*(?:>[ \t]?)+/gm, (m, at) => { quoted.push(at); return ' '.repeat(m.length); });
+  const inQuote = at => { const line = text.lastIndexOf('\n', at - 1) + 1; return quoted.includes(line); };
   const spans = [];
   // Split on blank lines, keeping each paragraph's position in src.
   const parts = text.split(/(\n[ \t]*\n)/);
@@ -44,11 +49,11 @@ export function findSpans(src) {
     if (!t) continue;
     const base = offset + para.length - para.trimStart().length;
     const display = t.match(/^\$\$([\s\S]+)\$\$$/) ?? t.match(/^\\\[([\s\S]+)\\\]$/);
-    if (display) { spans.push({ type: 'display', tex: display[1], delim: t.startsWith('$$') ? '$$' : '\\[', span: t }); continue; }
+    if (display) { spans.push({ type: 'display', tex: display[1], delim: t.startsWith('$$') ? '$$' : '\\[', span: t, quoted: inQuote(base) }); continue; }
     for (const m of t.matchAll(/\$\$([^$]+)\$\$/g)) {
       const end = m.index + m[0].length;
       const ownLine = /(^|\n)[ \t]*$/.test(t.slice(0, m.index)) && /^[ \t]*(\n|$)/.test(t.slice(end));
-      spans.push({ type: 'midDisplay', tex: m[1], span: m[0], ownLine });
+      spans.push({ type: 'midDisplay', tex: m[1], span: m[0], ownLine, quoted: inQuote(base + m.index) });
     }
     const rest = t.replace(/\$\$[^$]+\$\$/g, m => ' '.repeat(m.length));
     const first = spans.length;
@@ -100,6 +105,7 @@ export function commonRules(s) {
   if (s.type === 'inline' && s.emphasis && /(^|[^A-Za-z0-9\\])_/.test(s.tex))
     p.push('next to bold or italics, put each _ right after a letter or digit');
   if (s.tex?.includes('\\\\')) p.push('write row breaks as \\cr, not \\\\');
+  if (s.type === 'bracket') p.push('\\[...\\] inside a sentence shows its backslashes; write brackets in text as [a, b], and math as $...$');
   return p;
 }
 
@@ -109,8 +115,10 @@ const okBefore = c => c === undefined || /[\s([]/.test(c) || c > '\x7f';
 const okAfter = c => c === undefined || /[\s.,;:!?)]/.test(c) || c > '\x7f';
 
 export function strictRules(s) {
+  if (s.quoted && (s.type === 'display' || s.type === 'midDisplay'))
+    return ['a $$...$$ display inside a quotation shows as text; end the quotation before it'];
   if (s.type === 'midDisplay') return ['$$...$$ only as its own paragraph, with a blank line before and after'];
-  if (s.type === 'paren' || s.type === 'bracket' || (s.type === 'display' && s.delim === '\\['))
+  if (s.type === 'paren' || (s.type === 'display' && s.delim === '\\['))
     return ['use $...$ or $$...$$, not \\( \\) or \\[ \\]'];
   if (s.type !== 'inline') return [];
   if (s.multiline) return ['keep each $...$ on one line'];
@@ -149,8 +157,10 @@ export function docRules(s) {
 const PREFIX = '\\textstyle ';   // a no-op in inline math; with it the app takes any formula for math
 const MAX = 60;                  // the app's limit for an inline span, dollars excluded
 export function fixText(src, katex) {
+  const moved = unquoteDisplays(src), spaced = separateDisplays(moved.text);
+  src = spaced.text;
   const spans = findSpans(src).filter(s => s.type === 'inline' && !s.multiline);
-  let text = src, fixed = 0;
+  let text = src, fixed = moved.count + spaced.count;
   for (const s of spans.reverse()) {
     let before = text.slice(0, s.start), after = text.slice(s.end);
     const body = s.tex.trim().startsWith(PREFIX.trim()) ? s.tex.trim().slice(PREFIX.trim().length).trim() : s.tex.trim();
@@ -159,9 +169,24 @@ export function fixText(src, katex) {
     else {
       const b = fixBody(body, s.emphasis);
       const pieces = PREFIX.length + b.length <= MAX ? [b] : splitLong(b, MAX - PREFIX.length, katex);
-      out = pieces
-        ? pieces.map(p => `$${PREFIX}${p}$`).join(' ')
-        : `$${b}$`;   // too long even to split: no room for the prefix
+      // A piece ending in an operator or a comma gets the same {} as a whole formula would.
+      if (pieces) out = pieces.map(p => p.trim())
+        .map(p => `$${PREFIX}${/(?:(?<![_^])[-+]|[=<>/^_({[,:])$/.test(p) ? `${p}{}` : p}$`).join(' ');
+      else {
+        // Too long to split: give it a $$ paragraph of its own, which has no length limit, and let
+        // the sentence go on after it. Punctuation right after the formula moves into the display.
+        // Not in a table or a quotation, where a display can't go.
+        const line = before.slice(before.lastIndexOf('\n') + 1);
+        const item = /^([ \t]*)(?:[-*+]|\d+[.)])[ \t]+/.exec(line);
+        const indent = item ? ' '.repeat(item[0].length) : /^[ \t]*/.exec(line)[0];
+        if (/^[ \t]*[|>]/.test(line)) out = `$${b}$`;
+        else {
+          const punct = /^[.,;:]/.exec(after)?.[0] ?? '';
+          after = after.slice(punct.length).replace(/^[ \t]+/, '');
+          before = before.replace(/[ \t]+$/, '');
+          out = `\n\n${indent}$$${b}${punct}$$\n\n${after.startsWith('\n') ? '' : indent}`;
+        }
+      }
     }
     // A straight quote or hyphen touching a dollar stops the formula from rendering: curl the quote
     // and its partner on the same line (one character for one, so earlier positions still hold).
@@ -184,10 +209,61 @@ export function fixText(src, katex) {
   return { text, fixed };
 }
 
+// A $$ display that is a paragraph of its own inside a blockquote, taken out of the quote.
+function unquoteDisplays(src) {
+  const lines = src.split('\n');
+  const isQuoted = k => /^[ \t]*>/.test(lines[k] ?? '');
+  const strip = k => lines[k].replace(/^[ \t]*(?:>[ \t]?)+/, '');
+  const blankAround = k => k < 0 || k >= lines.length || (isQuoted(k) ? strip(k) : lines[k]).trim() === '';
+  let count = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (!isQuoted(i) || !strip(i).trim().startsWith('$$')) continue;
+    let j = i;
+    const oneLine = strip(i).trim().length > 4 && strip(i).trim().endsWith('$$');
+    if (!oneLine) {
+      for (j = i + 1; j < lines.length && isQuoted(j) && !strip(j).trim().endsWith('$$'); j++);
+      if (j >= lines.length || !isQuoted(j)) continue;
+    }
+    if (!blankAround(i - 1) || !blankAround(j + 1)) continue;
+    for (let k = i; k <= j; k++) lines[k] = strip(k);
+    if (i > 0) lines[i - 1] = '';
+    if (j + 1 < lines.length) lines[j + 1] = '';
+    count++; i = j;
+  }
+  return { text: lines.join('\n'), count };
+}
+
+// A $$ display on lines of its own but inside a paragraph (no blank line around it), given blank
+// lines: the Code tab only renders a display that is a paragraph of its own. Not in code blocks,
+// quotations or tables.
+function separateDisplays(src) {
+  const lines = src.split('\n'), out = [];
+  let fence = false, count = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i], t = line.trim();
+    if (/^(```|~~~)/.test(t)) fence = !fence;
+    if (fence || !t.startsWith('$$') || /^[ \t]*[>|]/.test(line)) { out.push(line); continue; }
+    let j = i;
+    if (!(t.length > 4 && t.endsWith('$$'))) {
+      for (j = i + 1; j < lines.length && !lines[j].trim().endsWith('$$'); j++);
+      if (j >= lines.length) { out.push(line); continue; }
+    }
+    const indent = /^[ \t]*/.exec(line)[0];
+    const textBefore = i > 0 && lines[i - 1].trim() !== '', textAfter = j + 1 < lines.length && lines[j + 1].trim() !== '';
+    if (textBefore) out.push('');
+    for (let k = i; k <= j; k++) out.push(lines[k]);
+    if (textAfter) out.push('');
+    if (textBefore || textAfter) count++;
+    i = j;
+  }
+  return { text: out.join('\n'), count };
+}
+
 function fixBody(tex, emphasis) {
   let t = tex
     .replace(/\\\\(?![A-Za-z])\s*/g, '\\cr ')                       // markdown eats a backslash of \\
     .replace(/\\#\s*/g, '\\char35 ')
+    .replace(/\\\|/g, '\\Vert ')                                   // the Code tab drops \|; \Vert is the same
     .replace(/\\operatorname\*/g, '\\operatorname')                 // the same in inline math
     .replace(/(\\(?:begin|end)\{[A-Za-z]+)\*\}/g, '$1\u0000}')      // keep starred environment names
     .replace(/\*/g, '\\ast ').replace(/\u0000/g, '*')

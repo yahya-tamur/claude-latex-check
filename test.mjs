@@ -4,7 +4,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { copyFileSync, mkdtempSync, rmSync } from 'fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -129,10 +129,10 @@ const fixDir = mkdtempSync(join(tmpdir(), 'latex-check-test-'));
 const fixFile = join(fixDir, 'broken.md');
 copyFileSync(join(here, 'tests', 'fix', 'broken.md'), fixFile);
 const fixRuns = [
-  ['--fix', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 23 rendered'],
-  ['--fix again', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 23 rendered'],
-  ['fixed text, chat view', [join(here, 'skills/latex-check/scripts/check.mjs'), '--surface', 'chat', fixFile], 'ok: 23 rendered'],
-  ['fixed text, lint --fix', [join(here, 'skills/latex-check/scripts/lint.mjs'), '--fix', fixFile], 'ok: 23 checked'],
+  ['--fix', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 29 rendered'],
+  ['--fix again', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 29 rendered'],
+  ['fixed text, chat view', [join(here, 'skills/latex-check/scripts/check.mjs'), '--surface', 'chat', fixFile], 'ok: 29 rendered'],
+  ['fixed text, lint --fix', [join(here, 'skills/latex-check/scripts/lint.mjs'), '--fix', fixFile], 'ok: 29 checked'],
 ];
 for (const [what, args, want] of fixRuns) {
   const r = await node(args);
@@ -140,8 +140,44 @@ for (const [what, args, want] of fixRuns) {
   if (got !== want) { console.log(`DIFF  ${what} fix/broken.md: expected "${want}", got "${got}"`); bad++; }
   if (what !== '--fix' && r.out.includes('rewrote')) { console.log(`DIFF  ${what} fix/broken.md: rewrote an already fixed file`); bad++; }
 }
+
+// --append: a passing entry is added to the document, a failing one is kept in a draft instead.
+const notesFile = join(fixDir, 'notes.md'), draftFile = join(fixDir, '.notes.draft.md');
+const appendRun = (input, args) => promisify(execFile)(process.execPath, [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', '--append', notesFile, ...args], { encoding: 'utf8' })
+  .then(r => ({ code: 0, out: r.stdout }), e => ({ code: e.code, out: e.stdout ?? '' }));
+const withStdin = (input, args) => new Promise(resolve => {
+  const child = execFile(process.execPath, [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', '--append', notesFile, ...args], { encoding: 'utf8' },
+    (e, stdout) => resolve({ code: e ? e.code : 0, out: stdout }));
+  child.stdin.end(input);
+});
+const appendChecks = [];
+let r1 = await withStdin('# Notes\n\n> Q?\n\nIt is $x^2$ and $0$.\n', []);
+appendChecks.push(['passing entry added', r1.code === 0 && readFileSync(notesFile, 'utf8').includes('$\\textstyle x^{2}$')]);
+let r2 = await withStdin('> Q2?\n\nBroken $\\frac{1}$ here.\n', []);
+appendChecks.push(['failing entry kept in a draft', r2.code === 1 && existsSync(draftFile) && !readFileSync(notesFile, 'utf8').includes('Broken')]);
+writeFileSync(draftFile, readFileSync(draftFile, 'utf8').replace('\\frac{1}', '\\frac{1}{2}'));
+let r3 = await appendRun('', [draftFile]);
+appendChecks.push(['fixed draft added, draft removed', r3.code === 0 && !existsSync(draftFile) && readFileSync(notesFile, 'utf8').includes('\\frac{1}{2}')]);
+
+// The Stop hook: silent on a reply that renders, asks for a correction (with the fixed text when
+// the rewrites cover it) on one that doesn't, and never twice in a row.
+const hook = input => new Promise(resolve => {
+  const child = execFile(process.execPath, [join(here, 'skills/latex-check-chat/scripts/check-reply.mjs')], { encoding: 'utf8' },
+    (e, stdout) => resolve(stdout));
+  child.stdin.end(JSON.stringify(input));
+});
+const h1 = await hook({ last_assistant_message: 'Fine: $x^{2} + 1$.' });
+appendChecks.push(['hook silent on a good reply', h1 === '']);
+const h2 = await hook({ last_assistant_message: 'Stars: $f^*$ and **bold** and $g^*$.' });
+appendChecks.push(['hook asks for a fixed reply', h2.includes('"decision":"block"') && h2.includes('f^{\\\\ast}')]);
+const h4 = await hook({ last_assistant_message: 'Defined on \\[a, b\\] here, with $x^{2}$.' });
+appendChecks.push(['hook catches escaped brackets in text', h4.includes('"decision":"block"')]);
+const h3 = await hook({ last_assistant_message: 'Stars: $f^*$ and $g^*$.', stop_hook_active: true });
+appendChecks.push(['hook doesn\'t ask twice', h3 === '']);
+for (const [what, ok] of appendChecks) if (!ok) { console.log(`DIFF  ${what}`); bad++; }
+
 rmSync(fixDir, { recursive: true });
 
-const total = Object.keys(expected).length * 2 + 1 + Object.keys(docRuns).length + fixRuns.length;
+const total = Object.keys(expected).length * 2 + 1 + Object.keys(docRuns).length + fixRuns.length + appendChecks.length;
 console.log(bad ? `${bad} of ${total} differ` : `all ${total} as expected`);
 process.exit(bad ? 1 : 0);

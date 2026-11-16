@@ -1,6 +1,6 @@
 ---
 name: latex-check-chat
-description: Check LaTeX math in replies and documents for errors before sending, on claude.ai and in Cowork (not Claude Code). Use whenever a reply or a markdown document there will contain math in $...$ or $$...$$.
+description: Write LaTeX math that renders in replies and documents on claude.ai and in Cowork (not Claude Code). Use whenever a reply or a markdown document there will contain math in $...$ or $$...$$.
 allowed-tools: Bash(node *) PowerShell(node *)
 license: MIT
 ---
@@ -9,13 +9,16 @@ license: MIT
 
 Claude's chat renders almost any `$...$` as math. What goes wrong is invalid TeX, which shows as an
 error or with a command spelled out literally, and a few layout mistakes. For the rest of this
-session, follow these rules in every reply that contains math, and check it before sending.
+session, follow these rules in every reply that contains math.
 Markdown files you create that contain math follow them too, plus those in "Documents" below.
 
 ## Rules
 
+- Start every inline formula with `\textstyle `, as in `$\textstyle x^{2} + 1$`. It changes
+  nothing visible, and it makes the formula render in stricter viewers too, such as Claude Code's.
 - Put `$$...$$` only on its own paragraph, never mid-sentence.
 - Keep each `$...$` on one line.
+- Don't escape brackets in text: write [a, b], not `\[a, b\]`, which shows as a broken formula.
 - Never put `*` inside `$...$`: markdown can pair it with nearby `**bold**` or `*italics*`
   markers, which then show as stars. Write the symbol as `\ast`, as in `$\mathcal{O}^{\ast}$`.
 - In a paragraph with bold or italics, put each `_` in `$...$` right after a letter or digit:
@@ -24,17 +27,12 @@ Markdown files you create that contain math follow them too, plus those in "Docu
   `\begin{pmatrix} 1 & 2 \cr 3 & 4 \end{pmatrix}`. Markdown can eat a backslash of `\\`.
 - Use only commands KaTeX knows; give every command all its arguments, and balance braces.
 
-## Checking a reply
+## After sending
 
-Write the reply's markdown, exactly as it will be sent, to a temp file and run the script in this
-skill's `scripts` folder:
-`node ${CLAUDE_SKILL_DIR}/scripts/lint.mjs <file>`
-(If `${CLAUDE_SKILL_DIR}` isn't filled in, use the path of this skill's folder.) Run it on its own,
-without `&&` or pipes. It prints only problems plus a summary line. Exit 0 = fine, 1 = something
-failed, 2 = it couldn't run.
-
-On `FAIL` lines, fix only the flagged formulas, edit them in the temp file in place, re-run, then
-send that text, character for character (if you change anything after the check, check again):
+Write the reply directly; don't draft it in a file first. Where the plugin's hook runs (Cowork), a
+check reads each reply after it's sent. If some math won't render, it lists the formulas, and
+often gives a corrected version: then send the whole reply again as it asks, with nothing else
+changed. Fixes for what it lists:
 - **`KaTeX error`:** fix the syntax, such as a missing argument in `\frac{1}` or an unbalanced `{`.
 - **`unknown command`:** use a command KaTeX supports, or `\operatorname{name}` / `\text{...}`.
 - **`$$...$$` mid-sentence:** use `$...$`, or give it its own paragraph.
@@ -47,8 +45,6 @@ send that text, character for character (if you change anything after the check,
   a command's braces, drop the braces around a single letter: `\mathbf x_{i}`, `\hat x_{i}`. All
   look the same.
 - **`\\` row break:** write `\cr` instead, followed by a space.
-
-If Node isn't available or the script exits 2, send the reply anyway, written by the rules.
 
 ## Documents
 

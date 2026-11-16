@@ -6,6 +6,7 @@
 |---|---|
 | `skills/latex-check/` | The Claude Code skill. Its `scripts/` holds the checker (`check.mjs`, plus `env.mjs` for the browser globals, `bundle.mjs` for reading the app's code in place and `hooks.mjs` for serving it to `import()`) and `lint.mjs`, the fallback check against the rules and KaTeX |
 | `skills/latex-check-chat/` | The claude.ai and Cowork skill. Its `scripts/` holds `lint.mjs`, the bundled KaTeX 0.16.47 (`katex.min.cjs`, the version the app ships) and `math-spans.mjs`, which both skills' `lint.mjs` use to find formulas and hold the rules they check. It lives here because on claude.ai only a skill's own folder is copied into the sandbox |
+| `hooks/hooks.json` | Hooks, where they run (Claude Code, Cowork; not claude.ai's chat). After each reply, `skills/latex-check-chat/scripts/check-reply.mjs`: in the Code tab it copies a reply with math into the conversation document with fixed formulas; elsewhere, if the reply's math won't render, it asks the session for a corrected reply, at most once per reply. When the Code tab skill loads, `skills/latex-check/scripts/skill-loaded.mjs` |
 | `tests/`, `test.mjs` | One test per kind of failure, plus `tests/short-rules.md`, a sample written by the rules that must render fully |
 | `.claude-plugin/` | Plugin and marketplace manifests |
 | `icon.svg`, `icon.png` | The icon: the source, and the PNG the manifest points to (only Anthropic's plugin directory reads it) |
@@ -30,6 +31,17 @@ FAIL  shown as text: $1/r$
 
 - Exit codes: 0 = all math renders, 1 = something failed, 2 = the checker couldn't run.
 - `--surface chat` renders through the claude.ai and Cowork chat view instead of the Code tab.
+- `--append <file.md>` adds the text to that markdown document once it passes, instead of
+  printing it; until then it's kept in a `.<name>.draft.md` next to the document. The Code tab
+  lint takes `--append` too. In the Code tab, the Stop hook uses it to copy every reply with math,
+  after the user's message, into `math-notes/<session>.md` in the working directory, so the session
+  writes each answer once, in chat, and the user reads it rendered in the file pane.
+  `skills/latex-check/scripts/skill-loaded.mjs`, a hook on the Skill tool, starts the background
+  browser when the skill loads and tells the session the document's path.
+- The first run leaves a copy of the checker running in the background (`--serve`) with the app's
+  code loaded, so later runs take about 0.4 s instead of 2–4 s. It listens on a socket in the
+  cache folder (a named pipe on Windows) named after the app version and the checker's code, and
+  exits after 30 minutes without checks. `LATEX_CHECK_NO_CACHE=1` skips it.
 - `--fix` first rewrites inline formulas into forms the Code tab renders, where a known rewrite
   exists, saves each file in place and prints its new text. The rewrites are `fixText` in
   `skills/latex-check-chat/scripts/math-spans.mjs`, and both lints take `--fix` too. Most of the

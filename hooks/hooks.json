@@ -1,0 +1,28 @@
+{
+  "description": "Copy replies with math into a conversation document with fixed formulas (Code tab), or ask for a corrected reply (Cowork)",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/latex-check/scripts/skill-loaded.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/latex-check-chat/scripts/check-reply.mjs\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -4,9 +4,13 @@
 // the same markdown hook + react-markdown + KaTeX the Code tab uses. Prints only problems: every
 // $...$, $$...$$, \(...\) or \[...\] left as plain text, and every KaTeX error.
 //
-// usage: node check.mjs [--fix] [--flag on|off] [--data <folder>] [file.md ...]   (reads stdin when no file)
+// usage: node check.mjs [--fix] [--append <file.md>] [--flag on|off] [--data <folder>] [file.md ...]
+//   (reads stdin when no file)
 //   --fix   first rewrite inline formulas into forms that render, where a known rewrite exists,
 //           saving each file in place and printing its new text; then check as usual
+//   --append  add the text to this markdown document once it passes, instead of printing it.
+//           Until then it is kept in a draft next to the document, which the output names.
+//   --surface chat  render as claude.ai and Cowork do instead of the Code tab
 //   Several files are checked in one run, each preceded by a "== <file>" line.
 //   --data  folder for per-machine state; the plugin passes ${CLAUDE_PLUGIN_DATA}. Default: next to
 //           this script.
@@ -15,13 +19,19 @@
 //   --flag  state of the app's inline-math feature flag. Default "on" (single-$ math renders in
 //           the Code tab). "off" = only $$ blocks render.
 // exit 0 = everything rendered, 1 = something didn't, 2 = harness broke (app not found or changed).
+// After a failure, the fixes saved on this machine are printed too.
+//
+// Loading the app's code takes a few seconds, so the first run leaves a copy of this script
+// running in the background (--serve) that keeps it loaded; later runs hand it their text and
+// take about 0.2 s. It exits after 30 minutes without checks. LATEX_CHECK_NO_CACHE=1 skips it.
 //
 // Finding the app: the running desktop app's resources folder (the one containing ion-dist or
 // ion-dist.asar), else a few common install locations.
 //
 // Environment overrides:
 //   CLAUDE_DESKTOP_RESOURCES  the app's resources folder, ahead of everything else
-//   LATEX_CHECK_CACHE         where the per-version index of bundle files is kept
+//   LATEX_CHECK_CACHE         where the per-version index of bundle files (and the background
+//                             copy's socket) is kept
 //
 // Bundle file names and minified export names change between app versions, so modules are found
 // by what they contain and exports by what their code does. The app's code is read in place, from
@@ -29,10 +39,11 @@
 import { readFileSync, existsSync, mkdirSync, writeFileSync, readdirSync, rmSync, statSync, readlinkSync } from 'fs';
 import { createHash } from 'crypto';
 import { homedir } from 'os';
-import { join, dirname } from 'path';
+import { join, dirname, basename } from 'path';
+import net from 'net';
 import { pathToFileURL, fileURLToPath } from 'url';
 import nodeModule, { createRequire } from 'module';
-import { spawnSync, execFileSync } from 'child_process';
+import { spawn, spawnSync, execFileSync } from 'child_process';
 import { openBundle } from './bundle.mjs';
 
 const die = msg => { console.error(`claude-latex-check harness error: ${String(msg).slice(0, 500)}`); process.exit(2); };
@@ -46,13 +57,16 @@ const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const args = process.argv.slice(2);
 let flag = 'on', dataDir;
 const inputs = [];
-let showFixes = false, addFix, surface = 'code', fix = false;
+let showFixes = false, addFix, surface = 'code', fix = false, doc, serve = false, warm = false;
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--flag') flag = args[++i];
   else if (args[i] === '--data') dataDir = args[++i];
   else if (args[i] === '--surface') surface = args[++i];
   else if (args[i] === '--show-fixes') showFixes = true;
   else if (args[i] === '--fix') fix = true;
+  else if (args[i] === '--append') doc = args[++i];
+  else if (args[i] === '--serve') serve = true;
+  else if (args[i] === '--warm') warm = true;
   else if (args[i] === '--add-fix') addFix = args[++i];
   else inputs.push(args[i]);
 }
@@ -125,111 +139,379 @@ const cacheRoot = env.LATEX_CHECK_CACHE ?? {
   darwin: join(home, 'Library', 'Caches', 'claude-latex-check'),
 }[process.platform] ?? join(env.XDG_CACHE_HOME ?? join(home, '.cache'), 'claude-latex-check');
 
+
 if (flag !== 'on' && flag !== 'off') die(`--flag must be on or off, got ${flag}`);
 if (surface !== 'code' && surface !== 'chat') die(`--surface must be code or chat, got ${surface}`);
-const texts = (inputs.length ? inputs : [0]).map(f => readFileSync(f, 'utf8'));
-// --fix: rewrite first, so everything below sees the fixed text. Printed per file further down.
-const rewrites = texts.map(() => 0);
-if (fix) {
-  const { fixText, loadKatex } = await import('../../latex-check-chat/scripts/math-spans.mjs');
-  let katex;
-  try { katex = loadKatex(); } catch {}
-  texts.forEach((text, i) => {
-    const r = fixText(text, katex);
-    if (!r.fixed) return;
-    texts[i] = r.text; rewrites[i] = r.fixed;
-    if (inputs.length) writeFileSync(inputs[i], r.text);
-  });
-}
-const header = i => {
-  if (inputs.length > 1) console.log(`== ${inputs[i]}`);
-  if (rewrites[i]) console.log(`rewrote ${rewrites[i]} formulas${inputs.length ? ' and saved the file' : ''}; the text is now:\n${texts[i].trimEnd()}\n--`);
-};
 
 // Math delimiters outside code. Without any (and no stray \commands) there is nothing to render.
 const proseOf = text => text.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, '');
 const hasMath = text => /\$|\\\(|\\\[|\\[a-zA-Z]{2,}/.test(proseOf(text));
-if (!texts.some(hasMath)) {
-  texts.forEach((_, i) => { header(i); console.log('ok: no math'); });
+
+// The browser with the app's code loaded is kept running between checks, in a background copy of
+// this script (--serve) that exits after IDLE_MS without requests. Its address names the app
+// version and this checker's code, so a copy left by another version is never used.
+const IDLE_MS = 30 * 60 * 1000;
+const codeKey = createHash('sha1').update(['check.mjs', 'env.mjs', 'hooks.mjs', 'bundle.mjs']
+  .map(f => { try { const st = statSync(join(here, f)); return `${f}:${st.size}:${st.mtimeMs}`; } catch { return f; } }).join()).digest('hex').slice(0, 8);
+const address = app => process.platform === 'win32'
+  ? `\\\\.\\pipe\\claude-latex-check-${app.key}-${codeKey}` : join(cacheRoot, `browser-${app.key}-${codeKey}.sock`);
+
+if (serve) await serveChecks();
+else if (warm) await warmUp();
+else await main();
+
+// --warm: start the background browser unless one is running, without waiting for it.
+async function warmUp() {
+  if (!env.LATEX_CHECK_NO_CACHE && !(await ask(address(appBundle()), { texts: [] })))
+    spawn(process.execPath, [fileURLToPath(import.meta.url), '--serve', '--data', dataDir],
+      { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   process.exit(0);
 }
 
-const app = appBundle();
-const bundle = openBundle(app.root);
-// The web UI's chunks: <ion-dist>/assets/<v>/*.js.
-const assets = (v => v && `assets/${v}`)(bundle.list('assets').find(d => bundle.list(`assets/${d}`).some(f => f.startsWith('vendor-frame-'))))
-  ?? die(`no app bundle in ${app.root}`);
-const jsFiles = bundle.list(assets).filter(f => f.endsWith('.js'));
-const read = f => bundle.read(`${assets}/${f}`);
-
-// Which chunks hold what the checker needs. Finding them means reading every chunk, so the result
-// is saved per app version, in a small index in the cache folder, once a run has fully succeeded.
-const gbRe = /if\(!([\w$]+)\)throw [\w$]+\(Error\("Missing or invalid GrowthBookProvider"\)[^;]*;/;
-const markers = {
-  renderer: ['guardedInline:', s => s.includes('guardedInline:')],      // Code-tab markdown hook (math gating + plugins)
-  preload: ['the chunk preloader', s => s.includes('=function(e,t,n){let r=globalThis.__antChunkLoadCtx')],  // vite chunk preloader
-  react: ['e.createRoot=function', s => s.includes('e.createRoot=function')],  // react + react-dom
-  markdown: ['.runSync(x.parse(', s => /\.runSync\([\w$]+\.parse\(/.test(s)],  // react-markdown
-  growthBook: ['the GrowthBook provider check', s => gbRe.test(s)],      // feature flags
-  chat: ['the chat markdown component', s => s.includes('inHouseLatexPlugin:') && s.includes('normalizationMode:')],
-};
-const indexPath = join(cacheRoot, `${app.key}.json`);
-let index;
-try { index = JSON.parse(readFileSync(indexPath, 'utf8')); } catch {}
-const fresh = !index;
-if (fresh) {
-  index = Object.fromEntries(Object.keys(markers).map(k => [k, []]));
-  for (const f of jsFiles) {
-    const s = read(f);
-    for (const [k, [, test]] of Object.entries(markers)) if (test(s)) index[k].push(f);
+async function main() {
+  const out = s => process.stdout.write(`${s}\n`);
+  if (doc && inputs.length > 1) die('--append takes one entry: a file, or the text on stdin');
+  const texts = (inputs.length ? inputs : [0]).map(f => readFileSync(f, 'utf8'));
+  // --fix: rewrite first, so everything below sees the fixed text.
+  const rewrites = texts.map(() => 0);
+  if (fix) {
+    const { fixText, loadKatex } = await import('../../latex-check-chat/scripts/math-spans.mjs');
+    let katex;
+    try { katex = loadKatex(); } catch {}
+    texts.forEach((text, i) => {
+      const r = fixText(text, katex);
+      if (!r.fixed) return;
+      texts[i] = r.text; rewrites[i] = r.fixed;
+      if (inputs.length) writeFileSync(inputs[i], r.text);
+    });
   }
-  for (const k of ['renderer', 'preload', 'react', 'markdown']) {
-    if (index[k].length !== 1) die(`expected one bundle file containing ${markers[k][0]}, found ${index[k].length}`);
-    index[k] = index[k][0];
-  }
-  if (!index.growthBook.length) die('GrowthBook provider check not found');
-}
-const files = index;
+  // --append: keep the entry in a draft next to the document until it passes, so that a failed check
+  // (or a broken harness) loses nothing; the draft is what gets fixed and checked again.
+  const draft = doc && (inputs[0] ?? join(dirname(doc), `.${basename(doc, '.md')}.draft.md`));
+  if (doc && !inputs.length) { mkdirSync(dirname(draft), { recursive: true }); writeFileSync(draft, texts[0]); }
+  if (draft) process.on('exit', code => { if (code === 2) console.error(`the entry is saved in ${draft}`); });
 
-// Patches, applied in memory as hooks.mjs serves the chunks: { "assets/<v>/<file>": source }.
-const patched = {};
-const patch = (name, re, to, what) => {
-  const s = patched[`${assets}/${name}`] ?? read(name);
-  if (!re.test(s)) die(`can't ${what} in ${name}`);
-  patched[`${assets}/${name}`] = s.replace(re, to);
-};
-{
-  // Make the inline-math flag follow --flag (a global set below). Older builds: the hook does `x=<flagFn>(),{display:...}=...`.
-  // Newer builds: `x=<flagFn>()` in the hook, then x is passed as the second argument to the
-  // function that returns {display, guardedInline, ...}.
-  const flagFn = (() => {
-    const s = read(files.renderer);
-    const direct = s.match(/([\w$]+)=([\w$]+)\(\),\{display:/)?.[2];
-    if (direct) return direct;
-    const gates = [...s.matchAll(/function ([\w$]+)\([\w$]+,[\w$]+\)\{[^{}]*return\{display:[^{}]*guardedInline:/g)];
-    if (gates.length !== 1) return;
-    const calls = [...s.matchAll(new RegExp(`(?<![\\w$.]|function )${escapeRe(gates[0][1])}\\([\\w$]+,([\\w$]+)\\)`, 'g'))];
-    if (calls.length !== 1) return;
-    // The flag variable is assigned shortly before the call, inside the hook.
-    const before = s.slice(Math.max(0, calls[0].index - 600), calls[0].index);
-    const assigns = [...before.matchAll(new RegExp(`[,;{ ]${escapeRe(calls[0][1])}=([\\w$]+)\\(\\)[,;]`, 'g'))];
-    return assigns.at(-1)?.[1];
-  })() ?? die('inline-math flag function not found');
-  patch(files.renderer, new RegExp(`function ${escapeRe(flagFn)}\\(\\)\\{(?:[^{}]|\\{[^{}]*\\})*\\}`),
-    `function ${flagFn}(){return globalThis.__latexCheckInlineMath!==!1}`, 'pin the inline-math flag');
-  // No GrowthBook provider outside the app: treat every other flag as absent instead of throwing.
-  for (const f of files.growthBook)
-    patch(f, gbRe, 'if(!$1)return{on:!1,off:!0,value:null,source:"unknownFeature"};', 'stub GrowthBook');
-  // Vite's preloader waits on <link> loads that never fire in jsdom: export a pass-through instead.
-  const preloadFn = read(files.preload).match(/([\w$]+)=function\(e,t,n\)\{let r=globalThis\.__antChunkLoadCtx/)?.[1]
-    ?? die('chunk preloader not found');
-  patch(files.preload, new RegExp(`export\\{([^}]*)\\b${escapeRe(preloadFn)} as `),
-    'const __pass=f=>f();export{$1__pass as ', 'replace the chunk preloader');
+  let results;
+  if (!texts.some(hasMath)) results = texts.map(() => ({ lines: ['ok: no math'], failed: false }));
+  else {
+    const app = appBundle();
+    const request = { texts, surface, flag };
+    results = env.LATEX_CHECK_NO_CACHE ? null : await ask(address(app), request);
+    if (!results) {
+      const engine = await createEngine(app);
+      results = [];
+      for (const text of texts) results.push(await engine.check(text, surface, flag));
+      // Keep a browser running for the next checks.
+      if (!env.LATEX_CHECK_NO_CACHE)
+        spawn(process.execPath, [fileURLToPath(import.meta.url), '--serve', '--data', dataDir],
+          { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    }
+  }
+
+  let anyFailed = false;
+  texts.forEach((text, i) => {
+    if (inputs.length > 1) out(`== ${inputs[i]}`);
+    if (rewrites[i] && doc) out(`rewrote ${rewrites[i]} formulas`);
+    else if (rewrites[i]) out(`rewrote ${rewrites[i]} formulas${inputs.length ? ' and saved the file' : ''}; the text is now:\n${text.trimEnd()}\n--`);
+    results[i].lines.forEach(out);
+    anyFailed ||= results[i].failed;
+  });
+  // On a failure, show the fixes saved on this machine: they may cover it.
+  if (anyFailed && existsSync(fixesPath)) {
+    const saved = readFileSync(fixesPath, 'utf8').split('\n').filter(l => l.startsWith('- '));
+    if (saved.length) out(`fixes found on this machine:\n${saved.join('\n')}`);
+  }
+  if (doc) {
+    if (anyFailed) out(`not added to ${doc}. Fix the flagged spans in ${draft}, then run the same command with ${draft} in place of the text on stdin.`);
+    else {
+      const old = existsSync(doc) ? readFileSync(doc, 'utf8').trimEnd() : '';
+      mkdirSync(dirname(doc), { recursive: true });
+      writeFileSync(doc, `${old ? `${old}\n\n---\n\n` : ''}${texts[0].trim()}\n`);
+      if (basename(draft).endsWith('.draft.md')) rmSync(draft, { force: true });
+      out(`added to ${doc}`);
+    }
+  }
+  process.exit(anyFailed ? 1 : 0);
 }
-// Serve the bundle's chunks to import() under file URLs inside the bundle.
-const prefix = pathToFileURL(app.root).href + '/';
-if (!nodeModule.register) die(`needs Node 18.19 or newer for module loader hooks, found ${process.version}`);
-nodeModule.register('./hooks.mjs', import.meta.url, { data: { prefix, root: app.root, patched } });
+
+// Send a request to the running browser; null if there is none or it fails.
+function ask(path, request) {
+  return new Promise(resolve => {
+    let buf = '';
+    const sock = net.connect(path);
+    const timer = setTimeout(() => { sock.destroy(); resolve(null); }, 60000);
+    const done = v => { clearTimeout(timer); resolve(v); };
+    sock.on('connect', () => sock.write(`${JSON.stringify(request)}\n`));
+    sock.on('data', d => { buf += d; });
+    sock.on('end', () => { try { done(JSON.parse(buf).results); } catch { done(null); } });
+    sock.on('error', () => done(null));
+  });
+}
+
+// --serve: load the browser once, then answer requests one at a time until idle.
+async function serveChecks() {
+  const app = appBundle();
+  const engine = await createEngine(app);
+  const path = address(app);
+  // Another copy may have started meanwhile: then this one isn't needed.
+  if (await ask(path, { texts: [] })) process.exit(0);
+  if (process.platform !== 'win32') { mkdirSync(cacheRoot, { recursive: true }); rmSync(path, { force: true }); }
+  let idle, queue = Promise.resolve();
+  const touch = () => { clearTimeout(idle); idle = setTimeout(() => process.exit(0), IDLE_MS); };
+  net.createServer(sock => {
+    let buf = '';
+    sock.on('error', () => {});
+    sock.on('data', d => {
+      buf += d;
+      if (!buf.includes('\n')) return;
+      touch();
+      const req = JSON.parse(buf.slice(0, buf.indexOf('\n')));
+      queue = queue.then(async () => {
+        const results = [];
+        for (const text of req.texts) results.push(await engine.check(text, req.surface, req.flag));
+        sock.end(`${JSON.stringify({ results })}\n`);
+      });
+    });
+  }).listen(path, touch);
+  if (process.platform !== 'win32') process.on('exit', () => { try { rmSync(path, { force: true }); } catch {} });
+}
+
+// The app's transcript renderer in jsdom. Returns { check(text, surface, flag) }, where check gives
+// { lines, failed }: the problems found in text, and the summary line.
+async function createEngine(app) {
+  const bundle = openBundle(app.root);
+  // The web UI's chunks: <ion-dist>/assets/<v>/*.js.
+  const assets = (v => v && `assets/${v}`)(bundle.list('assets').find(d => bundle.list(`assets/${d}`).some(f => f.startsWith('vendor-frame-'))))
+    ?? die(`no app bundle in ${app.root}`);
+  const jsFiles = bundle.list(assets).filter(f => f.endsWith('.js'));
+  const read = f => bundle.read(`${assets}/${f}`);
+
+  // Which chunks hold what the checker needs. Finding them means reading every chunk, so the result
+  // is saved per app version, in a small index in the cache folder, once a run has fully succeeded.
+  const gbRe = /if\(!([\w$]+)\)throw [\w$]+\(Error\("Missing or invalid GrowthBookProvider"\)[^;]*;/;
+  const markers = {
+    renderer: ['guardedInline:', s => s.includes('guardedInline:')],      // Code-tab markdown hook (math gating + plugins)
+    preload: ['the chunk preloader', s => s.includes('=function(e,t,n){let r=globalThis.__antChunkLoadCtx')],  // vite chunk preloader
+    react: ['e.createRoot=function', s => s.includes('e.createRoot=function')],  // react + react-dom
+    markdown: ['.runSync(x.parse(', s => /\.runSync\([\w$]+\.parse\(/.test(s)],  // react-markdown
+    growthBook: ['the GrowthBook provider check', s => gbRe.test(s)],      // feature flags
+    chat: ['the chat markdown component', s => s.includes('inHouseLatexPlugin:') && s.includes('normalizationMode:')],
+  };
+  const indexPath = join(cacheRoot, `${app.key}.json`);
+  let index;
+  try { index = JSON.parse(readFileSync(indexPath, 'utf8')); } catch {}
+  const fresh = !index;
+  if (fresh) {
+    index = Object.fromEntries(Object.keys(markers).map(k => [k, []]));
+    for (const f of jsFiles) {
+      const s = read(f);
+      for (const [k, [, test]] of Object.entries(markers)) if (test(s)) index[k].push(f);
+    }
+    for (const k of ['renderer', 'preload', 'react', 'markdown']) {
+      if (index[k].length !== 1) die(`expected one bundle file containing ${markers[k][0]}, found ${index[k].length}`);
+      index[k] = index[k][0];
+    }
+    if (!index.growthBook.length) die('GrowthBook provider check not found');
+  }
+  const files = index;
+
+  // Patches, applied in memory as hooks.mjs serves the chunks: { "assets/<v>/<file>": source }.
+  const patched = {};
+  const patch = (name, re, to, what) => {
+    const s = patched[`${assets}/${name}`] ?? read(name);
+    if (!re.test(s)) die(`can't ${what} in ${name}`);
+    patched[`${assets}/${name}`] = s.replace(re, to);
+  };
+  {
+    // Make the inline-math flag follow --flag (a global set per check). Older builds: the hook does
+    // `x=<flagFn>(),{display:...}=...`. Newer builds: `x=<flagFn>()` in the hook, then x is passed as
+    // the second argument to the function that returns {display, guardedInline, ...}.
+    const flagFn = (() => {
+      const s = read(files.renderer);
+      const direct = s.match(/([\w$]+)=([\w$]+)\(\),\{display:/)?.[2];
+      if (direct) return direct;
+      const gates = [...s.matchAll(/function ([\w$]+)\([\w$]+,[\w$]+\)\{[^{}]*return\{display:[^{}]*guardedInline:/g)];
+      if (gates.length !== 1) return;
+      const calls = [...s.matchAll(new RegExp(`(?<![\\w$.]|function )${escapeRe(gates[0][1])}\\([\\w$]+,([\\w$]+)\\)`, 'g'))];
+      if (calls.length !== 1) return;
+      // The flag variable is assigned shortly before the call, inside the hook.
+      const before = s.slice(Math.max(0, calls[0].index - 600), calls[0].index);
+      const assigns = [...before.matchAll(new RegExp(`[,;{ ]${escapeRe(calls[0][1])}=([\\w$]+)\\(\\)[,;]`, 'g'))];
+      return assigns.at(-1)?.[1];
+    })() ?? die('inline-math flag function not found');
+    patch(files.renderer, new RegExp(`function ${escapeRe(flagFn)}\\(\\)\\{(?:[^{}]|\\{[^{}]*\\})*\\}`),
+      `function ${flagFn}(){return globalThis.__latexCheckInlineMath!==!1}`, 'pin the inline-math flag');
+    // No GrowthBook provider outside the app: treat every other flag as absent instead of throwing.
+    for (const f of files.growthBook)
+      patch(f, gbRe, 'if(!$1)return{on:!1,off:!0,value:null,source:"unknownFeature"};', 'stub GrowthBook');
+    // Vite's preloader waits on <link> loads that never fire in jsdom: export a pass-through instead.
+    const preloadFn = read(files.preload).match(/([\w$]+)=function\(e,t,n\)\{let r=globalThis\.__antChunkLoadCtx/)?.[1]
+      ?? die('chunk preloader not found');
+    patch(files.preload, new RegExp(`export\\{([^}]*)\\b${escapeRe(preloadFn)} as `),
+      'const __pass=f=>f();export{$1__pass as ', 'replace the chunk preloader');
+  }
+  // Serve the bundle's chunks to import() under file URLs inside the bundle.
+  const prefix = pathToFileURL(app.root).href + '/';
+  if (!nodeModule.register) die(`needs Node 18.19 or newer for module loader hooks, found ${process.version}`);
+  nodeModule.register('./hooks.mjs', import.meta.url, { data: { prefix, root: app.root, patched } });
+
+  globalThis.__latexCheckInlineMath = true;
+  const { setupBrowser } = await import('./env.mjs');
+  setupBrowser(loadJsdom().JSDOM);
+  // The app logs as it renders; problems are returned, not printed, so silence it for good.
+  console.log = console.warn = console.info = console.debug = () => {};
+  // [exportName, fn] pairs of a bundle file.
+  const chunk = f => import(`${prefix}${assets}/${f}`);
+  const load = async f => Object.entries(await chunk(f)).filter(([, v]) => typeof v === 'function');
+  const src = f => Function.prototype.toString.call(f);
+  const passes = (test, f) => { try { return test(f); } catch { return false; } };
+  // A unique pattern match can still be the wrong function after an update, so React pieces are
+  // checked by behavior, the rest must match exactly once and are then proven by the canaries below.
+  const pickBy = (entries, test, what) => entries.find(([, f]) => passes(test, f)) ?? die(`${what} not found`);
+  const pickOne = (entries, test, what) => {
+    const hits = entries.filter(([, f]) => passes(test, f));
+    if (new Set(hits.map(([, f]) => f)).size !== 1) die(`expected one ${what}, found ${hits.length}`);
+    return hits[0];
+  };
+
+  const reactFns = await load(files.react);
+  const [, createRoot] = pickBy(reactFns, f => f.length === 2 && src(f).includes('(299)') &&
+    typeof f(document.createElement('div'))?.render === 'function', 'createRoot');
+  const [, jsx] = pickBy(reactFns.filter(([, f]) => src(f).length < 800 && f.length >= 2), f => {
+    const T = () => null, e = f(T, { a: 1 });
+    // Async functions found here reject later, which would otherwise end the run.
+    if (e instanceof Promise) { e.catch(() => {}); return false; }
+    return e?.$$typeof === Symbol.for('react.transitional.element') && e.type === T && e.props.a === 1;
+  }, 'jsx');
+  const [hookName, useTranscriptMarkdown] = pickOne(await load(files.renderer),
+    f => src(f).includes('guardedInline:') && src(f).includes('rehypePlugins:'), 'transcript markdown hook');
+  const [, ReactMarkdown] = pickOne(await load(files.markdown),
+    f => /\.runSync\([\w$]+\.parse\(/.test(src(f)) && f.length === 1, 'react-markdown');
+
+  // Wiring check, once per app version: some component must still call this hook the way the Code
+  // tab transcript does, hook(text, "chat", true, ...). Otherwise the app has moved to another renderer.
+  if (fresh) {
+    const importRe = new RegExp(`import\\{[^}]*\\b${escapeRe(hookName)} as ([\\w$]+)[^}]*\\}from"\\./${escapeRe(files.renderer)}"`);
+    const wired = jsFiles.some(f => {
+      const s = read(f), alias = s.match(importRe)?.[1];
+      return alias && new RegExp(`(?<![\\w$.])${escapeRe(alias)}\\([\\w$]+,"chat",!0[,)]`).test(s);
+    });
+    if (!wired) die('no app component calls the markdown hook as hook(text, "chat", true) any more');
+  }
+
+  // --surface chat: the conversation view claude.ai chats and Cowork share renders text with its own
+  // markdown component (memo-wrapped, takes `text`, sets up the same in-house LaTeX plugin itself).
+  // Loaded on first use.
+  let ChatMarkdown;
+  async function chatMarkdown() {
+    if (ChatMarkdown) return ChatMarkdown;
+    const memos = (await Promise.all(files.chat.map(chunk)))
+      .flatMap(m => Object.entries(m)).filter(([, v]) => v?.$$typeof === Symbol.for('react.memo') && typeof v.type === 'function');
+    [, ChatMarkdown] = pickOne(memos, v => src(v.type).includes('inHouseLatexPlugin:') && src(v.type).includes('normalizationMode:'), 'chat markdown component');
+    await canary('chat', 'a^2 b^2');
+    return ChatMarkdown;
+  }
+
+  // Render markdown the way the transcript's text component does, hook(text, "chat", true), or the
+  // way the chat view does. Returns a detached copy of the result.
+  async function render(md, surface, waitForMath) {
+    function Transcript() {
+      const { remarkPlugins, rehypePlugins } = useTranscriptMarkdown(md, 'chat', true, false);
+      return jsx(ReactMarkdown, { remarkPlugins, rehypePlugins, children: md });
+    }
+    const el = document.createElement('div');
+    document.body.append(el);
+    const node = surface === 'chat' ? jsx(ChatMarkdown, { text: md, typography: 'prose', isStreaming: false }) : jsx(Transcript, {});
+    const root = createRoot(el, { onUncaughtError: e => die(e?.stack ?? e) });
+    root.render(node);
+    // Math plugins load lazily on first use; wait until math shows up or time runs out.
+    for (let t = 0; waitForMath && t < 40 && !el.querySelector('.katex, .katex-error'); t++) await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 300));
+    const copy = el.cloneNode(true);
+    root.unmount();
+    el.remove();
+    return copy;
+  }
+
+  // Canary: math that must render if the pipeline is assembled right. Also loads the math plugins.
+  async function canary(surface, want) {
+    const el = await render('Canary $a^2$ inline.\n\n$$b^2$$\n', surface, true);
+    const got = [...el.querySelectorAll('.katex annotation')].map(e => e.textContent.trim()).join(' ');
+    if (got !== want) die(`canary rendered [${got}] in the ${surface} view; the pipeline no longer works`);
+  }
+  await canary('code', 'a^2 b^2');
+  if (fresh) {
+    // Everything checked out: save the index, replacing whatever older app versions left.
+    for (const d of ls(cacheRoot)) if (d.endsWith('.json')) rmSync(join(cacheRoot, d), { force: true });
+    mkdirSync(cacheRoot, { recursive: true });
+    writeFileSync(indexPath, JSON.stringify(index));
+  }
+
+  async function check(text, surface, flag) {
+    if (!hasMath(text)) return { lines: ['ok: no math'], failed: false };
+    if (surface === 'chat') await chatMarkdown();
+    globalThis.__latexCheckInlineMath = flag === 'on';
+    const prose = proseOf(text);
+    // Escaped \* and \_ outside math are meant to show; render them as look-alikes so the emphasis
+    // check below doesn't take them for markers. They never pair, so nothing else changes.
+    // Code blocks aren't math, and the chat view's code block needs app context jsdom lacks: blank
+    // them out there, keeping the lines.
+    if (surface === 'chat') text = text.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, m => m.replace(/[^\n]/g, ''));
+    const el = await render(text.replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|\$\$[\s\S]*?\$\$|\$[^$\n]*\$)|\\([*_])/g,
+      (m, keep, c) => keep ?? (c === '*' ? '\u2217' : '\uff3f')), surface, false);
+    if (!el.textContent.trim() && text.trim()) die('renderer produced no output');
+
+    const errors = [...el.querySelectorAll('.katex-error')];
+    // The app's KaTeX shows an unknown command literally (e.g. "\notacommand" as plain text inside the
+    // formula) instead of raising an error, so look for text runs that are just a \command.
+    const tex = k => k.querySelector('annotation')?.textContent.trim() ?? k.textContent.trim();
+    const unknown = [...el.querySelectorAll('.katex')].flatMap(k =>
+      [...k.querySelectorAll('.katex-html .mord.text')].map(t => t.textContent.trim())
+        .filter(t => /^\\[a-zA-Z]+$/.test(t)).map(cmd => [cmd, tex(k)]));
+    const rendered = el.querySelectorAll('.katex').length - new Set(unknown.map(([, t]) => t)).size;
+    const rest = el.cloneNode(true);
+    rest.querySelectorAll('.katex, .katex-error, code, pre').forEach(e => e.remove());
+    const leftover = rest.textContent.match(/\$\$?[^$\n]+\$?\$?|\$\$|\\\(.+?\\\)|\\\[.+?\\\]|\\[a-zA-Z]{2,}/g) ?? [];
+    // A rejected \(x\) shows as plain "(x)" (markdown eats the backslash), so it leaves no trace to find
+    // above. Count each \(body\) / \[body\] whose "(body)" / "[body]" appears in the output more often
+    // than the source has it written plainly.
+    const count = (s, sub) => s.split(sub).length - 1;
+    const bare = s => s.replace(/\\([()[\]])/g, '$1').replace(/\\,/g, ',');  // markdown's escape handling
+    const plainProse = prose.replace(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/g, '');
+    const seen = new Set();
+    for (const m of prose.matchAll(/\\(\()([\s\S]+?)\\\)|\\(\[)([\s\S]+?)\\\]/g)) {
+      const open = m[1] ?? m[3], shown = bare(open + (m[2] ?? m[4]) + (open === '(' ? ')' : ']'));
+      if (seen.has(shown)) continue;
+      seen.add(shown);
+      const extra = count(rest.textContent, shown) - count(bare(plainProse), shown);
+      for (let k = 0; k < extra; k++) leftover.push(m[0]);
+    }
+
+    // Emphasis markers left visible: a * or _ in a formula can pair with them instead.
+    const shown = el.cloneNode(true);
+    shown.querySelectorAll('.katex').forEach(k => k.replaceWith(`$${tex(k)}$`));
+    shown.querySelectorAll('code, pre').forEach(e => e.remove());
+    const flat = shown.textContent.replace(/\s+/g, ' ');
+    const emphasis = [];
+    let end = -1;
+    for (const m of flat.matchAll(/\*\*|__/g)) {
+      if (m.index < end) continue;
+      end = m.index + 40;
+      emphasis.push(flat.slice(Math.max(0, m.index - 20), end).trim());
+    }
+
+    const lines = [
+      ...errors.map(e => `FAIL  KaTeX error in ${e.textContent.trim()}: ${(e.getAttribute('title') ?? '').replace(/^ParseError: KaTeX parse error: /, '').split('\n')[0]}`),
+      ...unknown.map(([cmd, t]) => `FAIL  unknown command ${cmd} shown literally in ${t}`),
+      ...leftover.map(s => `FAIL  shown as text: ${s}`),
+      ...emphasis.map(s => `FAIL  emphasis shown as text: ${s}`),
+    ];
+    const failed = lines.length;
+    lines.push(failed ? `${failed} failed, ${rendered} rendered` : `ok: ${rendered} rendered`);
+    return { lines, failed: failed > 0 };
+  }
+  return { check };
+}
 
 // jsdom: the repo's own node_modules in a dev checkout, else the data folder (installed there once).
 // Only these exact folders count: Node's normal lookup would also take a jsdom of any version from
@@ -251,144 +533,3 @@ function loadJsdom() {
   if (r.status !== 0) die(`couldn't install jsdom into ${dataDir} (npm exit ${r.status})`);
   return req(join(dataDir, 'node_modules', 'jsdom'));
 }
-globalThis.__latexCheckInlineMath = flag === 'on';
-const { setupBrowser } = await import('./env.mjs');
-setupBrowser(loadJsdom().JSDOM);
-const quiet = console.log;
-console.log = console.warn = console.info = console.debug = () => {};
-// [exportName, fn] pairs of a bundle file.
-const chunk = f => import(`${prefix}${assets}/${f}`);
-const load = async f => Object.entries(await chunk(f)).filter(([, v]) => typeof v === 'function');
-const src = f => Function.prototype.toString.call(f);
-const passes = (test, f) => { try { return test(f); } catch { return false; } };
-// A unique pattern match can still be the wrong function after an update, so React pieces are
-// checked by behavior, the rest must match exactly once and are then proven by the canary below.
-const pickBy = (entries, test, what) => entries.find(([, f]) => passes(test, f)) ?? die(`${what} not found`);
-const pickOne = (entries, test, what) => {
-  const hits = entries.filter(([, f]) => passes(test, f));
-  if (new Set(hits.map(([, f]) => f)).size !== 1) die(`expected one ${what}, found ${hits.length}`);
-  return hits[0];
-};
-
-const reactFns = await load(files.react);
-const [, createRoot] = pickBy(reactFns, f => f.length === 2 && src(f).includes('(299)') &&
-  typeof f(document.createElement('div'))?.render === 'function', 'createRoot');
-const [, jsx] = pickBy(reactFns.filter(([, f]) => src(f).length < 800 && f.length >= 2), f => {
-  const T = () => null, e = f(T, { a: 1 });
-  // Async functions found here reject later, which would otherwise end the run.
-  if (e instanceof Promise) { e.catch(() => {}); return false; }
-  return e?.$$typeof === Symbol.for('react.transitional.element') && e.type === T && e.props.a === 1;
-}, 'jsx');
-const [hookName, useTranscriptMarkdown] = pickOne(await load(files.renderer),
-  f => src(f).includes('guardedInline:') && src(f).includes('rehypePlugins:'), 'transcript markdown hook');
-const [, ReactMarkdown] = pickOne(await load(files.markdown),
-  f => /\.runSync\([\w$]+\.parse\(/.test(src(f)) && f.length === 1, 'react-markdown');
-// --surface chat: the conversation view claude.ai chats and Cowork share renders text with its own
-// markdown component (memo-wrapped, takes `text`, sets up the same in-house LaTeX plugin itself).
-let ChatMarkdown;
-if (surface === 'chat') {
-  const memos = (await Promise.all(files.chat.map(chunk)))
-    .flatMap(m => Object.entries(m)).filter(([, v]) => v?.$$typeof === Symbol.for('react.memo') && typeof v.type === 'function');
-  [, ChatMarkdown] = pickOne(memos.map(([k, v]) => [k, v]),
-    v => src(v.type).includes('inHouseLatexPlugin:') && src(v.type).includes('normalizationMode:'), 'chat markdown component');
-}
-console.log = quiet;
-
-// Wiring check, once per app version: some component must still call this hook the way the Code
-// tab transcript does, hook(text, "chat", true, ...). Otherwise the app has moved to another renderer.
-if (fresh) {
-  const importRe = new RegExp(`import\\{[^}]*\\b${escapeRe(hookName)} as ([\\w$]+)[^}]*\\}from"\\./${escapeRe(files.renderer)}"`);
-  const wired = jsFiles.some(f => {
-    const s = read(f), alias = s.match(importRe)?.[1];
-    return alias && new RegExp(`(?<![\\w$.])${escapeRe(alias)}\\([\\w$]+,"chat",!0[,)]`).test(s);
-  });
-  if (!wired) die('no app component calls the markdown hook as hook(text, "chat", true) any more');
-}
-
-// Render markdown the way the transcript's text component does: hook(text, "chat", true).
-async function render(md, waitForMath) {
-  function Transcript() {
-    const { remarkPlugins, rehypePlugins } = useTranscriptMarkdown(md, 'chat', true, false);
-    return jsx(ReactMarkdown, { remarkPlugins, rehypePlugins, children: md });
-  }
-  const el = document.createElement('div');
-  document.body.append(el);
-  const node = surface === 'chat' ? jsx(ChatMarkdown, { text: md, typography: 'prose', isStreaming: false }) : jsx(Transcript, {});
-  createRoot(el, { onUncaughtError: e => die(e?.stack ?? e) }).render(node);
-  // Math plugins load lazily on first use; wait until math shows up or time runs out.
-  for (let t = 0; waitForMath && t < 40 && !el.querySelector('.katex, .katex-error'); t++) await new Promise(r => setTimeout(r, 100));
-  await new Promise(r => setTimeout(r, 300));
-  return el;
-}
-
-// Canary: math that must render if the pipeline is assembled right (inline only with the flag on).
-// Also loads the math plugins, so the real render below needs no waiting.
-const canary = await render('Canary $a^2$ inline.\n\n$$b^2$$\n', true);
-const canaryMath = [...canary.querySelectorAll('.katex annotation')].map(e => e.textContent.trim()).join(' ');
-if (canaryMath !== (flag === 'on' || surface === 'chat' ? 'a^2 b^2' : 'b^2')) die(`canary rendered [${canaryMath}]; the pipeline no longer works`);
-if (fresh) {
-  // Everything checked out: save the index, replacing whatever older app versions left.
-  for (const d of ls(cacheRoot)) rmSync(join(cacheRoot, d), { recursive: true, force: true });
-  mkdirSync(cacheRoot, { recursive: true });
-  writeFileSync(indexPath, JSON.stringify(index));
-}
-
-let anyFailed = false;
-for (const [i, text] of texts.entries()) {
-  header(i);
-  if (!hasMath(text)) { console.log('ok: no math'); continue; }
-  const prose = proseOf(text);
-  // Escaped \* and \_ outside math are meant to show; render them as look-alikes so the emphasis
-  // check below doesn't take them for markers. They never pair, so nothing else changes.
-  const el = await render(text.replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|\$\$[\s\S]*?\$\$|\$[^$\n]*\$)|\\([*_])/g,
-    (m, keep, c) => keep ?? (c === '*' ? '\u2217' : '\uff3f')), false);
-  if (!el.textContent.trim() && text.trim()) die('renderer produced no output');
-
-  const errors = [...el.querySelectorAll('.katex-error')];
-  // The app's KaTeX shows an unknown command literally (e.g. "\notacommand" as plain text inside the
-  // formula) instead of raising an error, so look for text runs that are just a \command.
-  const tex = k => k.querySelector('annotation')?.textContent.trim() ?? k.textContent.trim();
-  const unknown = [...el.querySelectorAll('.katex')].flatMap(k =>
-    [...k.querySelectorAll('.katex-html .mord.text')].map(t => t.textContent.trim())
-      .filter(t => /^\\[a-zA-Z]+$/.test(t)).map(cmd => [cmd, tex(k)]));
-  const rendered = el.querySelectorAll('.katex').length - new Set(unknown.map(([, t]) => t)).size;
-  const rest = el.cloneNode(true);
-  rest.querySelectorAll('.katex, .katex-error, code, pre').forEach(e => e.remove());
-  const leftover = rest.textContent.match(/\$\$?[^$\n]+\$?\$?|\\\(.+?\\\)|\\\[.+?\\\]|\\[a-zA-Z]{2,}/g) ?? [];
-  // A rejected \(x\) shows as plain "(x)" (markdown eats the backslash), so it leaves no trace to find
-  // above. Count each \(body\) / \[body\] whose "(body)" / "[body]" appears in the output more often
-  // than the source has it written plainly.
-  const count = (s, sub) => s.split(sub).length - 1;
-  const bare = s => s.replace(/\\([()[\]])/g, '$1').replace(/\\,/g, ',');  // markdown's escape handling
-  const plainProse = prose.replace(/\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\]/g, '');
-  const seen = new Set();
-  for (const m of prose.matchAll(/\\(\()([\s\S]+?)\\\)|\\(\[)([\s\S]+?)\\\]/g)) {
-    const open = m[1] ?? m[3], shown = bare(open + (m[2] ?? m[4]) + (open === '(' ? ')' : ']'));
-    if (seen.has(shown)) continue;
-    seen.add(shown);
-    const extra = count(rest.textContent, shown) - count(bare(plainProse), shown);
-    for (let k = 0; k < extra; k++) leftover.push(m[0]);
-  }
-
-  // Emphasis markers left visible: a * or _ in a formula can pair with them instead.
-  const shown = el.cloneNode(true);
-  shown.querySelectorAll('.katex').forEach(k => k.replaceWith(`$${tex(k)}$`));
-  shown.querySelectorAll('code, pre').forEach(e => e.remove());
-  const flat = shown.textContent.replace(/\s+/g, ' ');
-  const emphasis = [];
-  let end = -1;
-  for (const m of flat.matchAll(/\*\*|__/g)) {
-    if (m.index < end) continue;
-    end = m.index + 40;
-    emphasis.push(flat.slice(Math.max(0, m.index - 20), end).trim());
-  }
-
-  for (const e of errors) console.log(`FAIL  KaTeX error in ${e.textContent.trim()}: ${(e.getAttribute('title') ?? '').replace(/^ParseError: KaTeX parse error: /, '').split('\n')[0]}`);
-  for (const [cmd, t] of unknown) console.log(`FAIL  unknown command ${cmd} shown literally in ${t}`);
-  for (const s of leftover) console.log(`FAIL  shown as text: ${s}`);
-  for (const s of emphasis) console.log(`FAIL  emphasis shown as text: ${s}`);
-  const failed = errors.length + unknown.length + leftover.length + emphasis.length;
-  console.log(failed ? `${failed} failed, ${rendered} rendered` : `ok: ${rendered} rendered`);
-  anyFailed ||= failed > 0;
-}
-process.exit(anyFailed ? 1 : 0);
