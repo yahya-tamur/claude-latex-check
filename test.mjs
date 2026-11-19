@@ -129,10 +129,10 @@ const fixDir = mkdtempSync(join(tmpdir(), 'latex-check-test-'));
 const fixFile = join(fixDir, 'broken.md');
 copyFileSync(join(here, 'tests', 'fix', 'broken.md'), fixFile);
 const fixRuns = [
-  ['--fix', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 29 rendered'],
-  ['--fix again', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 29 rendered'],
-  ['fixed text, chat view', [join(here, 'skills/latex-check/scripts/check.mjs'), '--surface', 'chat', fixFile], 'ok: 29 rendered'],
-  ['fixed text, lint --fix', [join(here, 'skills/latex-check/scripts/lint.mjs'), '--fix', fixFile], 'ok: 29 checked'],
+  ['--fix', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 31 rendered'],
+  ['--fix again', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 31 rendered'],
+  ['fixed text, chat view', [join(here, 'skills/latex-check/scripts/check.mjs'), '--surface', 'chat', fixFile], 'ok: 31 rendered'],
+  ['fixed text, lint --fix', [join(here, 'skills/latex-check/scripts/lint.mjs'), '--fix', fixFile], 'ok: 31 checked'],
 ];
 for (const [what, args, want] of fixRuns) {
   const r = await node(args);
@@ -181,7 +181,7 @@ writeFileSync(transcript, [
 const h5 = await hook({ last_assistant_message: 'It is $2x$, and $0$ for a constant.', transcript_path: transcript, cwd: fixDir, session_id: 'abcd1234ffff' });
 const copy = join(fixDir, 'math-notes', 'abcd1234.md');
 appendChecks.push(['hook copies a Code tab reply into the document', h5 === '' && existsSync(copy)
-  && /> What is the derivative of x squared\?\n\nIt is \$\\textstyle 2x\$, and 0 for a constant\./.test(readFileSync(copy, 'utf8'))]);
+  && /> What is the derivative of x squared\?\n\nIt is \$\\textstyle 2x\$, and \$\\textstyle 0\$ for a constant\./.test(readFileSync(copy, 'utf8'))]);
 for (const [what, ok] of appendChecks) if (!ok) { console.log(`DIFF  ${what}`); bad++; }
 
 rmSync(fixDir, { recursive: true });

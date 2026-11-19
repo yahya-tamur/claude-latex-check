@@ -165,8 +165,7 @@ export function fixText(src, katex) {
     let before = text.slice(0, s.start), after = text.slice(s.end);
     const body = s.tex.trim().startsWith(PREFIX.trim()) ? s.tex.trim().slice(PREFIX.trim().length).trim() : s.tex.trim();
     let out;
-    if (/^-?\d[\d.,]*$/.test(body) && !/[.,]$/.test(body)) out = body.replace(/^-/, '−');   // a lone number is plain text
-    else {
+    {
       const b = fixBody(body, s.emphasis);
       const pieces = PREFIX.length + b.length <= MAX ? [b] : splitLong(b, MAX - PREFIX.length, katex);
       // A piece ending in an operator or a comma gets the same {} as a whole formula would.

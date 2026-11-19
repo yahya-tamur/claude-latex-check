@@ -15,6 +15,9 @@ reads the rendered answer there, in the app's file pane.
 ## Rules
 
 The script fixes most problems, but write math this way:
+- Write all math in LaTeX, even single letters, numbers and short expressions: `$\textstyle x$`,
+  `$\textstyle 3$`, `$\textstyle n + 1$`, `$\textstyle \eta \colon X \to Y$`. Don't write math
+  in plain text or Unicode symbols, such as η: X → Y or x², even when it's short.
 - Start every inline formula with `\textstyle `, as in `$\textstyle x^{2} + 1$`. It changes
   nothing visible, and with it the app takes the formula for math.
 - Use `$...$` inline, on one line. Never use `\(...\)` or `\[...\]`.
@@ -22,7 +25,6 @@ The script fixes most problems, but write math this way:
   enough. In a list item, also indent it to the item's text.
 - Keep inline formulas short, at most about 45 characters after `\textstyle `. A longer one goes in
   a `$$` paragraph.
-- Write a number on its own as plain text: 0 or 1.179, never `$0$`.
 - Put a space before each opening `$`, and a space or `.,;:!?)` after each closing `$`.
 
 ## Answering with math

@@ -12,7 +12,7 @@
 // (no app, or an app update broke it), the rules lint does the same rewrites and adds the copy
 // unchecked by the renderer.
 import { existsSync, readFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 
@@ -31,8 +31,12 @@ const doc = join(input.cwd ?? process.cwd(), 'math-notes', `${String(input.sessi
 const prompt = lastPrompt(transcript);
 const first = !existsSync(doc);   // the first entry gets a title
 const quote = prompt.trim().split('\n').map(l => `> ${l}`.trimEnd()).join('\n');
-const title = first ? `# ${prompt.trim().split('\n')[0].slice(0, 70)}\n\n` : '';
-const entry = `${title}${quote}\n\n${reply.trim()}\n`;
+// The title: the first line of the first message, cut at a word near 70 characters.
+const line = prompt.trim().split('\n')[0];
+const title = first ? `# ${line.length > 70 ? `${line.slice(0, 70).replace(/\s+\S*$/, '')}…` : line}\n\n` : '';
+// The sentence pointing to the document belongs in the chat, not in the document itself.
+const body = reply.trim().split('\n').filter(l => !l.includes(`](math-notes/${basename(doc)})`)).join('\n').trim();
+const entry = `${title}${quote}\n\n${body}\n`;
 const args = [check, '--fix', '--append', doc, ...(process.env.CLAUDE_PLUGIN_DATA ? ['--data', process.env.CLAUDE_PLUGIN_DATA] : [])];
 let r = spawnSync(process.execPath, args, { input: entry, encoding: 'utf8', timeout: 25000 });
 if (r.status === 2) r = spawnSync(process.execPath, [join(scripts, 'lint.mjs'), '--fix', '--append', doc], { input: entry, encoding: 'utf8', timeout: 25000 });

@@ -14,6 +14,9 @@ Markdown files you create that contain math follow them too, plus those in "Docu
 
 ## Rules
 
+- Write all math in LaTeX, even single letters, numbers and short expressions: `$\textstyle x$`,
+  `$\textstyle 3$`, `$\textstyle n + 1$`, `$\textstyle \eta \colon X \to Y$`. Don't write math
+  in plain text or Unicode symbols, such as η: X → Y or x², even when it's short.
 - Start every inline formula with `\textstyle `, as in `$\textstyle x^{2} + 1$`. It changes
   nothing visible, and it makes the formula render in stricter viewers too, such as Claude Code's.
 - Put `$$...$$` only on its own paragraph, never mid-sentence.
