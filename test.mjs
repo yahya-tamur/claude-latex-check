@@ -129,10 +129,10 @@ const fixDir = mkdtempSync(join(tmpdir(), 'latex-check-test-'));
 const fixFile = join(fixDir, 'broken.md');
 copyFileSync(join(here, 'tests', 'fix', 'broken.md'), fixFile);
 const fixRuns = [
-  ['--fix', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 31 rendered'],
-  ['--fix again', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 31 rendered'],
-  ['fixed text, chat view', [join(here, 'skills/latex-check/scripts/check.mjs'), '--surface', 'chat', fixFile], 'ok: 31 rendered'],
-  ['fixed text, lint --fix', [join(here, 'skills/latex-check/scripts/lint.mjs'), '--fix', fixFile], 'ok: 31 checked'],
+  ['--fix', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 32 rendered'],
+  ['--fix again', [join(here, 'skills/latex-check/scripts/check.mjs'), '--fix', fixFile], 'ok: 32 rendered'],
+  ['fixed text, chat view', [join(here, 'skills/latex-check/scripts/check.mjs'), '--surface', 'chat', fixFile], 'ok: 32 rendered'],
+  ['fixed text, lint --fix', [join(here, 'skills/latex-check/scripts/lint.mjs'), '--fix', fixFile], 'ok: 32 checked'],
 ];
 for (const [what, args, want] of fixRuns) {
   const r = await node(args);

@@ -136,8 +136,8 @@ found by content, and these are the heuristics to start from when something can'
 | What | Found by | Used for |
 |---|---|---|
 | Code-tab markdown hook file | contains `guardedInline:` | decides if math is on, returns `{remarkPlugins, rehypePlugins}` |
-| inline-math flag function | the no-argument function whose result reaches the function returning `{display, guardedInline}` (older builds: `x=<fn>(),{display:`) | patched to read `globalThis.__latexCheckInlineMath`, which `--flag` sets |
-| chunk preloader | `=function(e,t,n){let r=globalThis.__antChunkLoadCtx` | export replaced with `f=>f()` (jsdom never fires `<link>` load events, so it hangs) |
+| inline-math flag | the call `x=<fn>()` in the hook whose result reaches the function returning `{display, guardedInline}` (older builds: `x=<fn>(),{display:`); `<fn>` itself may be imported from another chunk | that call replaced by `globalThis.__latexCheckInlineMath!==!1`, which `--flag` sets |
+| chunk preloader | `<name>=function(a,b,c){let d=globalThis.__antChunkLoadCtx`, any names (newer builds: `=function e(t,n,r){…`) | export replaced with `f=>f()` (jsdom never fires `<link>` load events, so it hangs) |
 | feature-flag service | `throw …Error("Missing or invalid GrowthBookProvider")` | patched to answer "unknown flag" |
 | React | contains `e.createRoot=function`; `createRoot` has `(299)`; `jsx` is found by test-calling | rendering |
 | react-markdown | `.runSync(<x>.parse(` | rendering |

@@ -20,3 +20,10 @@ so it converges.
 not math: $x
 ```
 - A list: $1, -\tfrac{1}{2}, \tfrac{1}{3}, -\tfrac{1}{4}, \tfrac{1}{5}, -\tfrac{1}{6}, \dots$ here.
+
+1. First.
+2. A union:
+
+    $$C = A \cup B$$
+
+After the list.

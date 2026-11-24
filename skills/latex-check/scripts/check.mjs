@@ -299,9 +299,12 @@ async function createEngine(app) {
   // Which chunks hold what the checker needs. Finding them means reading every chunk, so the result
   // is saved per app version, in a small index in the cache folder, once a run has fully succeeded.
   const gbRe = /if\(!([\w$]+)\)throw [\w$]+\(Error\("Missing or invalid GrowthBookProvider"\)[^;]*;/;
+  // Vite's chunk preloader: `<name>=function(a,b,c){let d=globalThis.__antChunkLoadCtx`, its names
+  // changing between builds (newer builds name the function too: `=function e(t,n,r){...`).
+  const preloadRe = /([\w$]+)=function(?: [\w$]+)?\([\w$]+,[\w$]+,[\w$]+\)\{let [\w$]+=globalThis\.__antChunkLoadCtx/;
   const markers = {
     renderer: ['guardedInline:', s => s.includes('guardedInline:')],      // Code-tab markdown hook (math gating + plugins)
-    preload: ['the chunk preloader', s => s.includes('=function(e,t,n){let r=globalThis.__antChunkLoadCtx')],  // vite chunk preloader
+    preload: ['the chunk preloader', s => preloadRe.test(s)],  // vite chunk preloader
     react: ['e.createRoot=function', s => s.includes('e.createRoot=function')],  // react + react-dom
     markdown: ['.runSync(x.parse(', s => /\.runSync\([\w$]+\.parse\(/.test(s)],  // react-markdown
     growthBook: ['the GrowthBook provider check', s => gbRe.test(s)],      // feature flags
@@ -333,29 +336,32 @@ async function createEngine(app) {
     patched[`${assets}/${name}`] = s.replace(re, to);
   };
   {
-    // Make the inline-math flag follow --flag (a global set per check). Older builds: the hook does
-    // `x=<flagFn>(),{display:...}=...`. Newer builds: `x=<flagFn>()` in the hook, then x is passed as
-    // the second argument to the function that returns {display, guardedInline, ...}.
-    const flagFn = (() => {
+    // Make the inline-math flag follow --flag (a global set per check): in the hook, the flag is read
+    // into a variable, `x=<flagFn>()`, and that call is replaced by the global. (The flag function
+    // itself may live in another chunk.) Older builds: `x=<flagFn>(),{display:...}=...`. Newer
+    // builds: `x=<flagFn>()`, then x is passed as the second argument to the function that returns
+    // {display, guardedInline, ...}.
+    const flag = (() => {
       const s = read(files.renderer);
-      const direct = s.match(/([\w$]+)=([\w$]+)\(\),\{display:/)?.[2];
-      if (direct) return direct;
+      const direct = /([\w$]+)=([\w$]+)\(\),\{display:/.exec(s);
+      if (direct) return { at: direct.index, text: `${direct[1]}=${direct[2]}()`, s };
       const gates = [...s.matchAll(/function ([\w$]+)\([\w$]+,[\w$]+\)\{[^{}]*return\{display:[^{}]*guardedInline:/g)];
       if (gates.length !== 1) return;
       const calls = [...s.matchAll(new RegExp(`(?<![\\w$.]|function )${escapeRe(gates[0][1])}\\([\\w$]+,([\\w$]+)\\)`, 'g'))];
       if (calls.length !== 1) return;
       // The flag variable is assigned shortly before the call, inside the hook.
-      const before = s.slice(Math.max(0, calls[0].index - 600), calls[0].index);
-      const assigns = [...before.matchAll(new RegExp(`[,;{ ]${escapeRe(calls[0][1])}=([\\w$]+)\\(\\)[,;]`, 'g'))];
-      return assigns.at(-1)?.[1];
-    })() ?? die('inline-math flag function not found');
-    patch(files.renderer, new RegExp(`function ${escapeRe(flagFn)}\\(\\)\\{(?:[^{}]|\\{[^{}]*\\})*\\}`),
-      `function ${flagFn}(){return globalThis.__latexCheckInlineMath!==!1}`, 'pin the inline-math flag');
+      const from = Math.max(0, calls[0].index - 600);
+      const assigns = [...s.slice(from, calls[0].index).matchAll(new RegExp(`[,;{ ](${escapeRe(calls[0][1])}=[\\w$]+\\(\\))[,;]`, 'g'))];
+      const last = assigns.at(-1);
+      return last && { at: from + last.index + 1, text: last[1], s };
+    })() ?? die('inline-math flag not found');
+    patched[`${assets}/${files.renderer}`] = flag.s.slice(0, flag.at)
+      + flag.text.replace(/=.*/, '=globalThis.__latexCheckInlineMath!==!1') + flag.s.slice(flag.at + flag.text.length);
     // No GrowthBook provider outside the app: treat every other flag as absent instead of throwing.
     for (const f of files.growthBook)
       patch(f, gbRe, 'if(!$1)return{on:!1,off:!0,value:null,source:"unknownFeature"};', 'stub GrowthBook');
     // Vite's preloader waits on <link> loads that never fire in jsdom: export a pass-through instead.
-    const preloadFn = read(files.preload).match(/([\w$]+)=function\(e,t,n\)\{let r=globalThis\.__antChunkLoadCtx/)?.[1]
+    const preloadFn = read(files.preload).match(preloadRe)?.[1]
       ?? die('chunk preloader not found');
     patch(files.preload, new RegExp(`export\\{([^}]*)\\b${escapeRe(preloadFn)} as `),
       'const __pass=f=>f();export{$1__pass as ', 'replace the chunk preloader');
@@ -400,11 +406,14 @@ async function createEngine(app) {
 
   // Wiring check, once per app version: some component must still call this hook the way the Code
   // tab transcript does, hook(text, "chat", true, ...). Otherwise the app has moved to another renderer.
+  // The component may import the hook, or (newer builds) sit in the hook's own chunk and call it by
+  // its local name.
   if (fresh) {
+    const calls = name => new RegExp(`(?<![\\w$.])${escapeRe(name)}\\([\\w$]+,"chat",!0[,)]`);
     const importRe = new RegExp(`import\\{[^}]*\\b${escapeRe(hookName)} as ([\\w$]+)[^}]*\\}from"\\./${escapeRe(files.renderer)}"`);
-    const wired = jsFiles.some(f => {
+    const wired = calls(useTranscriptMarkdown.name).test(read(files.renderer)) || jsFiles.some(f => {
       const s = read(f), alias = s.match(importRe)?.[1];
-      return alias && new RegExp(`(?<![\\w$.])${escapeRe(alias)}\\([\\w$]+,"chat",!0[,)]`).test(s);
+      return alias && calls(alias).test(s);
     });
     if (!wired) die('no app component calls the markdown hook as hook(text, "chat", true) any more');
   }
@@ -426,7 +435,8 @@ async function createEngine(app) {
   // way the chat view does. Returns a detached copy of the result.
   async function render(md, surface, waitForMath) {
     function Transcript() {
-      const { remarkPlugins, rehypePlugins } = useTranscriptMarkdown(md, 'chat', true, false);
+      // As the transcript's text component calls it: hook(text, "chat", true, smartQuotes, true).
+      const { remarkPlugins, rehypePlugins } = useTranscriptMarkdown(md, 'chat', true, false, true);
       return jsx(ReactMarkdown, { remarkPlugins, rehypePlugins, children: md });
     }
     const el = document.createElement('div');

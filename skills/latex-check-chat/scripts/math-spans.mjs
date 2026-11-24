@@ -157,10 +157,10 @@ export function docRules(s) {
 const PREFIX = '\\textstyle ';   // a no-op in inline math; with it the app takes any formula for math
 const MAX = 60;                  // the app's limit for an inline span, dollars excluded
 export function fixText(src, katex) {
-  const moved = unquoteDisplays(src), spaced = separateDisplays(moved.text);
-  src = spaced.text;
+  const moved = unquoteDisplays(src), spaced = separateDisplays(moved.text), aligned = alignDisplays(spaced.text);
+  src = aligned.text;
   const spans = findSpans(src).filter(s => s.type === 'inline' && !s.multiline);
-  let text = src, fixed = moved.count + spaced.count;
+  let text = src, fixed = moved.count + spaced.count + aligned.count;
   for (const s of spans.reverse()) {
     let before = text.slice(0, s.start), after = text.slice(s.end);
     const body = s.tex.trim().startsWith(PREFIX.trim()) ? s.tex.trim().slice(PREFIX.trim().length).trim() : s.tex.trim();
@@ -256,6 +256,32 @@ function separateDisplays(src) {
     i = j;
   }
   return { text: out.join('\n'), count };
+}
+
+// A $$ display in a list item, indented past the item's text, re-indented to it: the Code tab only
+// renders a display indented at most as far as the item's text (3 spaces after "3. ", 2 after "- ").
+function alignDisplays(src) {
+  const lines = src.split('\n');
+  let fence = false, count = 0, item = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i], t = line.trim();
+    if (/^(```|~~~)/.test(t)) fence = !fence;
+    if (fence) continue;
+    const marker = /^([ \t]*)(?:[-*+]|\d+[.)])[ \t]+/.exec(line);
+    if (marker) { item = marker[0].length; continue; }
+    // A line starting at the left margin ends the list.
+    if (t && !/^[ \t]/.test(line)) { item = null; continue; }
+    if (item === null || !t.startsWith('$$')) continue;
+    const indent = /^[ \t]*/.exec(line)[0].length;
+    if (indent <= item) continue;
+    let j = i;
+    if (!(t.length > 4 && t.endsWith('$$')))
+      for (j = i + 1; j < lines.length && !lines[j].trim().endsWith('$$'); j++);
+    if (j >= lines.length) continue;
+    for (let k = i; k <= j; k++) lines[k] = ' '.repeat(item) + lines[k].trimStart();
+    count++; i = j;
+  }
+  return { text: lines.join('\n'), count };
 }
 
 function fixBody(tex, emphasis) {
